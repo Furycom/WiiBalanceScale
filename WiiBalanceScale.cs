@@ -40,6 +40,8 @@ namespace WiiBalanceScale
 {
     internal class WiiBalanceScale
     {
+        enum EConnectionError { None, NoBluetoothAdapter, PermissionDenied, NoDeviceFound, WrongDeviceType, ConnectionFailed }
+
         static bool CanShowUnicode = GetCanShowUnicode();
         static char CharFilledStar   = (CanShowUnicode ? '\u2739' : '\u00AE');
         static char CharHollowCircle = (CanShowUnicode ? '\u3007' : '\u00A1');
@@ -52,6 +54,9 @@ namespace WiiBalanceScale
         static float[] History = new float[100];
         static int HistoryBest = 1, HistoryCursor = -1;
         static EUnit SelectedUnit = EUnit.Kg;
+        static EConnectionError LastConnectionError = EConnectionError.None;
+        static string LastConnectionErrorDetail = "";
+        static bool DidTryElevation = false;
         enum EUnit { Kg, Lb, Stone };
 
         static bool GetCanShowUnicode()
@@ -59,6 +64,7 @@ namespace WiiBalanceScale
             try { return int.Parse(Microsoft.Win32.Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuildNumber", "").ToString()) >= 19000; } catch { return false; }
         }
 
+        [STAThread]
         static void Main(string[] args)
         {
 
@@ -76,6 +82,7 @@ namespace WiiBalanceScale
             }
             f.btnReset.Click += (object sender, System.EventArgs e) =>
             {
+                if (HistoryBest <= 0) return;
                 float HistorySum = 0.0f;
                 for (int i = 0; i < HistoryBest; i++)
                     HistorySum += History[(HistoryCursor + History.Length - i) % History.Length];
@@ -112,18 +119,73 @@ namespace WiiBalanceScale
             if (f != null) { if (f.Visible) f.Close(); f = null; }
         }
 
+        static void SetConnectionError(EConnectionError error, string detail)
+        {
+            LastConnectionError = error;
+            LastConnectionErrorDetail = detail;
+        }
+
+        static string GetConnectionErrorMessage()
+        {
+            string text;
+            switch (LastConnectionError)
+            {
+                case EConnectionError.PermissionDenied:
+                    text = "Bluetooth adapter detected but access denied. Try running as administrator.";
+                    break;
+                case EConnectionError.NoDeviceFound:
+                    text = "No Wii Balance Board found. Press SYNC on the device.";
+                    break;
+                case EConnectionError.WrongDeviceType:
+                    text = "A Nintendo device was detected, but it is not a Wii Balance Board.";
+                    break;
+                case EConnectionError.NoBluetoothAdapter:
+                    text = "No compatible bluetooth adapter found.";
+                    break;
+                default:
+                    text = "Connection to the Wii Balance Board failed.";
+                    break;
+            }
+            if (!string.IsNullOrEmpty(LastConnectionErrorDetail))
+                text += "\n\nDetails: " + LastConnectionErrorDetail;
+            return text;
+        }
+
         static void ConnectBalanceBoard(bool WasJustConnected)
         {
-            bool Connected = true; try { bb = new Wiimote(); bb.Connect(); bb.SetLEDs(1); bb.GetStatus(); } catch { Connected = false; }
-
-            if (!Connected || bb.WiimoteState.ExtensionType != ExtensionType.BalanceBoard)
+            bool Connected = true;
+            try
             {
-                if (ConnectionManager.ElevateProcessNeedRestart()) { Shutdown(); return; }
+                bb = new Wiimote();
+                bb.Connect();
+                bb.SetLEDs(1);
+                bb.GetStatus();
+            }
+            catch (Exception ex)
+            {
+                Connected = false;
+                SetConnectionError((ex is UnauthorizedAccessException ? EConnectionError.PermissionDenied : EConnectionError.ConnectionFailed), ex.Message);
+            }
+
+            if (!Connected)
+            {
                 if (cm == null) cm = new ConnectionManager();
                 cm.ConnectNextWiiMote();
                 return;
             }
+
+            if (bb.WiimoteState.ExtensionType != ExtensionType.BalanceBoard)
+            {
+                SetConnectionError(EConnectionError.WrongDeviceType, "Detected extension type: " + bb.WiimoteState.ExtensionType.ToString());
+                if (cm == null) cm = new ConnectionManager();
+                cm.ConnectNextWiiMote();
+                return;
+            }
+
             if (cm != null) { cm.Cancel(); cm = null; }
+            LastConnectionError = EConnectionError.None;
+            LastConnectionErrorDetail = "";
+            DidTryElevation = false;
 
             f.unitSelector.Visible = true;
             f.lblWeight.Text = "...";
@@ -139,7 +201,7 @@ namespace WiiBalanceScale
                 ZeroedWeight += bb.WiimoteState.BalanceBoardState.WeightKg;
                 bb.GetStatus();
             }
-            ZeroedWeight /= (float)InitWeightCount;
+            ZeroedWeight = (InitWeightCount > 0 ? (ZeroedWeight / (float)InitWeightCount) : 0.0f);
 
             //start with half full quality bar
             HistoryCursor = HistoryBest = History.Length / 2;
@@ -157,13 +219,34 @@ namespace WiiBalanceScale
                     f.lblQuality.Text = (f.lblQuality.Text.Length >= 5 ? "" : f.lblQuality.Text) + CharHourglass;
                     return;
                 }
+
                 if (cm.HadError())
                 {
+                    if (!DidTryElevation)
+                    {
+                        DidTryElevation = true;
+                        try
+                        {
+                            if (ConnectionManager.ElevateProcessNeedRestart()) { Shutdown(); return; }
+                        }
+                        catch (Exception ex)
+                        {
+                            SetConnectionError(EConnectionError.PermissionDenied, ex.Message);
+                        }
+                    }
+
+                    if (LastConnectionError == EConnectionError.None)
+                        SetConnectionError(EConnectionError.NoBluetoothAdapter, "Connection manager reported a bluetooth error.");
+
                     BoardTimer.Stop();
-                    System.Windows.Forms.MessageBox.Show(f, "No compatible bluetooth adapter found - Quitting", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    System.Windows.Forms.MessageBox.Show(f, GetConnectionErrorMessage(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Shutdown();
                     return;
                 }
+
+                if (LastConnectionError == EConnectionError.None)
+                    SetConnectionError(EConnectionError.NoDeviceFound, "Connection scan finished without a matching device.");
+
                 ConnectBalanceBoard(true);
                 return;
             }
@@ -183,13 +266,14 @@ namespace WiiBalanceScale
                 if (System.Math.Abs(MaxHist - HistoryEntry) > 1.0f) break;
                 if (System.Math.Abs(MinHist - HistoryEntry) > 1.0f) break;
                 if (HistoryEntry > MaxHist) MaxHist = HistoryEntry;
-                if (HistoryEntry > MinHist) MinHist = HistoryEntry;
+                if (HistoryEntry < MinHist) MinHist = HistoryEntry;
                 float Diff = System.Math.Max(System.Math.Abs(HistoryEntry - kg), System.Math.Abs((HistorySum + HistoryEntry) / (HistoryBest + 1) - kg));
                 if (Diff > MaxDiff) MaxDiff = Diff;
                 if (Diff > 1.0f) break;
                 HistorySum += HistoryEntry;
             }
 
+            if (HistoryBest <= 0) return;
             kg = HistorySum / HistoryBest - ZeroedWeight;
 
             float accuracy = 1.0f / HistoryBest;
