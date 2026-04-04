@@ -2,7 +2,7 @@
 Use the Wii Balance Board as a pretty accurate weight scale (± 20 gram).
 
 ## Download
-You can find a binary download under the [Releases page](https://github.com/schellingb/WiiBalanceScale/releases/latest).
+You can find a binary download under the [Releases page](../../releases/latest).
 
 ## Requirements
 - Wii Balance Board
