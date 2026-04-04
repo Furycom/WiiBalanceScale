@@ -78,7 +78,7 @@ namespace WiiBalanceScale
             if (CanShowUnicode)
             {
                 f.lblQuality.Location = new System.Drawing.Point(f.lblQuality.Location.X, f.lblQuality.Location.Y - 10);
-                f.lblQuality.Font = new System.Drawing.Font("Arial", 60F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Pixel);
+                f.lblQuality.Font = new System.Drawing.Font("Segoe UI Symbol", 60F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Pixel);
             }
             f.btnReset.Click += (object sender, System.EventArgs e) =>
             {
