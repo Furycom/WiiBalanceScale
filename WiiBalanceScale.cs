@@ -168,7 +168,7 @@ namespace WiiBalanceScale
         static float LastDisplayedWeightKg = 0.0f;
         static float LastLeftPercent = 50.0f;
         static float LastFrontPercent = 50.0f;
-        static PointF LastPressurePoint = new PointF(0.0f, 0.0f);
+        static System.Drawing.PointF LastPressurePoint = new System.Drawing.PointF(0.0f, 0.0f);
 
         static readonly string ProfilesPath = Path.Combine(Application.StartupPath, "profiles.csv");
         static readonly string LegacyProfilesPath = Path.Combine(Application.StartupPath, "profiles.txt");
@@ -773,7 +773,7 @@ namespace WiiBalanceScale
             LastLeftPercent = leftPct;
             LastFrontPercent = frontPct;
 
-            LastPressurePoint = new PointF(
+            LastPressurePoint = new System.Drawing.PointF(
                 total <= 0.0001f ? 0.0f : ((right - left) / total),
                 total <= 0.0001f ? 0.0f : ((front - back) / total));
 
@@ -1724,13 +1724,13 @@ namespace WiiBalanceScale
 
                 if (values.Count < 2) return;
 
-                PointF[] pts = new PointF[values.Count];
+                System.Drawing.PointF[] pts = new System.Drawing.PointF[values.Count];
                 for (int i = 0; i < values.Count; i++)
                 {
                     float t = (values.Count == 1 ? 0.0f : (float)i / (values.Count - 1));
                     float x = 1 + t * (rc.Width - 3);
                     float y = rc.Height - 1 - ((values[i] - minValue) / (maxValue - minValue)) * (rc.Height - 2);
-                    pts[i] = new PointF(x, y);
+                    pts[i] = new System.Drawing.PointF(x, y);
                 }
                 g.DrawLines(trendPen, pts);
                 for (int i = 0; i < pts.Length; i++)
