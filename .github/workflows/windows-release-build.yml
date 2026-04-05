@@ -1,0 +1,28 @@
+name: Windows Release Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build solution (Release)
+        run: msbuild WiiBalanceScale.sln /p:Configuration=Release /p:Platform=AnyCPU
+
+      - name: Upload Windows build artifact (v1.4.0)
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiiBalanceScale-v1.4.0-windows-release
+          path: bin/Release/*
+          if-no-files-found: error
