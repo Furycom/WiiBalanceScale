@@ -283,6 +283,9 @@ namespace WiiBalanceScale
                 if (!cm.DidConnect())
                 {
                     ApplyScannerStatusToConnectionError();
+                    ConnectionManager.ScanStatus scanStatus = cm.GetLastScanStatus();
+                    if (scanStatus != null && scanStatus.Result == ConnectionManager.EScanResult.Cancelled)
+                        return;
 
                     if (LastConnectionError == EConnectionError.None)
                         SetConnectionError(EConnectionError.NoDeviceFound, "Bluetooth scan timed out without finding a Wii Balance Board.");
@@ -292,9 +295,6 @@ namespace WiiBalanceScale
                     Shutdown();
                     return;
                 }
-
-                if (LastConnectionError == EConnectionError.None)
-                    SetConnectionError(EConnectionError.NoDeviceFound, "Connection scan finished without a matching device.");
 
                 ConnectBalanceBoard(true);
                 return;
