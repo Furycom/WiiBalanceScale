@@ -88,6 +88,15 @@ namespace WiiBalanceScale
             public float AverageStabilityLevel;
             public float AveragePressurePointX;
             public float AveragePressurePointY;
+            public float TimeToStabilizeSeconds;
+            public bool HasStableWindow;
+            public float StabilityScore;
+            public string StabilityBandText;
+            public string StanceTendencyText;
+            public string RepeatedPatternText;
+            public string StabilityPatternText;
+            public bool MatchesUsualPattern;
+            public string MainAdvice;
             public string WeightVsHeightText;
             public string LeftRightTendencyText;
             public string FrontBackTendencyText;
@@ -117,6 +126,10 @@ namespace WiiBalanceScale
             public float AverageStabilityLevel;
             public float AveragePressurePointX;
             public float AveragePressurePointY;
+            public float TimeToStabilizeSeconds;
+            public float StabilityScore;
+            public string StabilityBandText;
+            public string StanceTendencyText;
             public string SessionQualityText;
             public string WeightVsHeightText;
             public string SummaryText;
@@ -158,9 +171,9 @@ namespace WiiBalanceScale
 
         static readonly string ProfilesPath = Path.Combine(Application.StartupPath, "profiles.csv");
         static readonly string LegacyProfilesPath = Path.Combine(Application.StartupPath, "profiles.txt");
-        static readonly string CsvHeader = "timestamp_utc,profile,profile_height_cm,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,pressure_point_x,pressure_point_y,stability_level,session_quality,session_review_summary,session_summary,session_comparison,recent_trend_interpretation,current_advice,weight_vs_height_text";
+        static readonly string CsvHeader = "timestamp_utc,profile,profile_height_cm,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,pressure_point_x,pressure_point_y,stability_level,session_quality,time_to_stabilize_seconds,stability_score,stability_band,stance_tendency,repeated_pattern_if_available,main_advice,session_review_summary,session_summary,session_comparison,recent_trend_interpretation,current_advice,weight_vs_height_text";
         static readonly string SessionHistoryPath = Path.Combine(Application.StartupPath, "session_history.csv");
-        static readonly string SessionHistoryHeader = "timestamp_utc,profile,profile_height_cm,sample_count,stable_weight_kg,avg_left_percent,avg_front_percent,avg_stability_level,avg_pressure_x,avg_pressure_y,session_quality,weight_vs_height_text,summary_text,review_text,comparison_text,trend_text,advice_text";
+        static readonly string SessionHistoryHeader = "timestamp_utc,profile,profile_height_cm,sample_count,stable_weight_kg,avg_left_percent,avg_front_percent,avg_stability_level,avg_pressure_x,avg_pressure_y,time_to_stabilize_seconds,stability_score,stability_band,stance_tendency,session_quality,weight_vs_height_text,summary_text,review_text,comparison_text,trend_text,advice_text";
 
         static bool GetCanShowUnicode()
         {
@@ -397,8 +410,26 @@ namespace WiiBalanceScale
                     float.TryParse(parts[7], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AverageStabilityLevel);
                     float.TryParse(parts[8], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AveragePressurePointX);
                     float.TryParse(parts[9], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AveragePressurePointY);
-                    if (parts.Length >= 17)
+                    if (parts.Length >= 21)
                     {
+                        float.TryParse(parts[10], NumberStyles.Float, CultureInfo.InvariantCulture, out record.TimeToStabilizeSeconds);
+                        float.TryParse(parts[11], NumberStyles.Float, CultureInfo.InvariantCulture, out record.StabilityScore);
+                        record.StabilityBandText = parts[12];
+                        record.StanceTendencyText = parts[13];
+                        record.SessionQualityText = parts[14];
+                        record.WeightVsHeightText = parts[15];
+                        record.SummaryText = parts[16];
+                        record.ReviewText = parts[17];
+                        record.ComparisonText = parts[18];
+                        record.TrendText = parts[19];
+                        record.AdviceText = parts[20];
+                    }
+                    else if (parts.Length >= 17)
+                    {
+                        record.TimeToStabilizeSeconds = 0.0f;
+                        record.StabilityScore = Math.Max(0.0f, Math.Min(100.0f, ((record.AverageStabilityLevel - 1.0f) / 4.0f) * 100.0f));
+                        record.StabilityBandText = GetStabilityBandFromScore(record.StabilityScore);
+                        record.StanceTendencyText = ClassifyStanceTendency(record.AverageLeftPercent, record.AverageFrontPercent, 1.5f);
                         record.SessionQualityText = parts[10];
                         record.WeightVsHeightText = parts[11];
                         record.SummaryText = parts[12];
@@ -409,6 +440,10 @@ namespace WiiBalanceScale
                     }
                     else
                     {
+                        record.TimeToStabilizeSeconds = 0.0f;
+                        record.StabilityScore = Math.Max(0.0f, Math.Min(100.0f, ((record.AverageStabilityLevel - 1.0f) / 4.0f) * 100.0f));
+                        record.StabilityBandText = GetStabilityBandFromScore(record.StabilityScore);
+                        record.StanceTendencyText = ClassifyStanceTendency(record.AverageLeftPercent, record.AverageFrontPercent, 1.5f);
                         record.SessionQualityText = "usable session";
                         record.WeightVsHeightText = parts[10];
                         record.SummaryText = parts[11];
@@ -443,6 +478,10 @@ namespace WiiBalanceScale
                 sb.Append(r.AverageStabilityLevel.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AveragePressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AveragePressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.StabilityScore.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(CsvEscape(r.StabilityBandText)); sb.Append(',');
+                sb.Append(CsvEscape(r.StanceTendencyText)); sb.Append(',');
                 sb.Append(CsvEscape(r.SessionQualityText)); sb.Append(',');
                 sb.Append(CsvEscape(r.WeightVsHeightText)); sb.Append(',');
                 sb.Append(CsvEscape(r.SummaryText)); sb.Append(',');
@@ -762,6 +801,9 @@ namespace WiiBalanceScale
                 insight.ComparisonText = "Compared with your previous session: not available yet.";
                 insight.TrendText = "Recent trend: not enough history yet.";
                 insight.ReviewText = "Session review: waiting for enough samples...";
+                insight.RepeatedPatternText = "Repeated pattern: not enough strong history yet.";
+                insight.StabilityPatternText = "stability pattern not ready yet";
+                insight.MainAdvice = "Stay still for a few seconds so the board can settle.";
                 return insight;
             }
 
@@ -777,6 +819,11 @@ namespace WiiBalanceScale
             float maxWeight = float.MinValue;
             float previousLeft = samples[0].LeftPercent;
             float previousFront = samples[0].FrontPercent;
+            float copPath = 0.0f;
+            float sumLeftDeltaAbs = 0.0f;
+            float sumFrontDeltaAbs = 0.0f;
+            float sumLeftVariance = 0.0f;
+            float sumFrontVariance = 0.0f;
 
             for (int i = 0; i < samples.Count; i++)
             {
@@ -802,6 +849,11 @@ namespace WiiBalanceScale
                 {
                     if (Math.Abs(s.LeftPercent - previousLeft) >= 4.0f || Math.Abs(s.FrontPercent - previousFront) >= 4.0f)
                         driftCount++;
+                    sumLeftDeltaAbs += Math.Abs(s.LeftPercent - previousLeft);
+                    sumFrontDeltaAbs += Math.Abs(s.FrontPercent - previousFront);
+                    float dx = s.PressurePointX - samples[i - 1].PressurePointX;
+                    float dy = s.PressurePointY - samples[i - 1].PressurePointY;
+                    copPath += (float)Math.Sqrt(dx * dx + dy * dy);
                     previousLeft = s.LeftPercent;
                     previousFront = s.FrontPercent;
                 }
@@ -814,6 +866,19 @@ namespace WiiBalanceScale
             insight.AveragePressurePointX = sumX / samples.Count;
             insight.AveragePressurePointY = sumY / samples.Count;
             insight.WeightVsHeightText = BuildWeightVsHeightText(profile, insight.StableWeightKg);
+            insight.TimeToStabilizeSeconds = EstimateTimeToStabilizeSeconds(samples, out insight.HasStableWindow);
+
+            for (int i = 0; i < samples.Count; i++)
+            {
+                float leftDelta = samples[i].LeftPercent - insight.AverageLeftPercent;
+                float frontDelta = samples[i].FrontPercent - insight.AverageFrontPercent;
+                sumLeftVariance += leftDelta * leftDelta;
+                sumFrontVariance += frontDelta * frontDelta;
+            }
+            float leftStdDev = (float)Math.Sqrt(sumLeftVariance / samples.Count);
+            float frontStdDev = (float)Math.Sqrt(sumFrontVariance / samples.Count);
+            bool variableStance = leftStdDev >= 2.6f || frontStdDev >= 2.6f;
+            insight.StanceTendencyText = (variableStance ? "variable stance" : ClassifyStanceTendency(insight.AverageLeftPercent, insight.AverageFrontPercent, 1.4f));
 
             if (leftHeavyCount > rightHeavyCount + 3) insight.LeftRightTendencyText = "slightly more weight on the left";
             else if (rightHeavyCount > leftHeavyCount + 3) insight.LeftRightTendencyText = "slightly more weight on the right";
@@ -823,10 +888,9 @@ namespace WiiBalanceScale
             else if (backHeavyCount > frontHeavyCount + 3) insight.FrontBackTendencyText = "slightly more weight backward";
             else insight.FrontBackTendencyText = "front and back mostly even";
 
-            if (insight.AverageStabilityLevel >= 4.2f) insight.StabilityQualityText = "very stable";
-            else if (insight.AverageStabilityLevel >= 3.2f) insight.StabilityQualityText = "mostly stable";
-            else if (insight.AverageStabilityLevel >= 2.4f) insight.StabilityQualityText = "some movement";
-            else insight.StabilityQualityText = "movement reduced accuracy";
+            insight.StabilityScore = BuildStabilityScore(insight.AverageStabilityLevel, copPath, driftCount, Math.Max(0.0f, maxWeight - minWeight), samples.Count, sumLeftDeltaAbs, sumFrontDeltaAbs);
+            insight.StabilityBandText = GetStabilityBandFromScore(insight.StabilityScore);
+            insight.StabilityQualityText = insight.StabilityBandText;
 
             if (Math.Abs(insight.AveragePressurePointX) < 0.08f && Math.Abs(insight.AveragePressurePointY) < 0.08f) insight.PressurePointTendencyText = "pressure point stayed near center";
             else if (Math.Abs(insight.AveragePressurePointX) > Math.Abs(insight.AveragePressurePointY)) insight.PressurePointTendencyText = (insight.AveragePressurePointX > 0 ? "pressure point tended to the right" : "pressure point tended to the left");
@@ -839,9 +903,76 @@ namespace WiiBalanceScale
             insight.IsStrongEnoughForComparison = (insight.SessionQuality == ESessionQuality.GoodSession || insight.SessionQuality == ESessionQuality.UsableSession);
 
             BuildComparisonAndAdvice(insight);
-            insight.SummaryText = "Session summary: " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", " + insight.StabilityQualityText + ".";
-            insight.ReviewText = "Session review: final stable weight " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", left/right " + insight.LeftRightTendencyText + ", front/back " + insight.FrontBackTendencyText + ", " + insight.PressurePointTendencyText + ".";
+            insight.SummaryText = "Session summary: " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", " + insight.StabilityBandText + ", stabilized in " + insight.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s.";
+            insight.ReviewText = "Session review: final stable weight " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", time to stabilize " + insight.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s, stability " + insight.StabilityBandText + " (" + insight.StabilityScore.ToString("0", CultureInfo.InvariantCulture) + "/100), stance " + insight.StanceTendencyText + ", pattern check: " + GetPatternCheckText(insight) + ".";
             return insight;
+        }
+
+        static float EstimateTimeToStabilizeSeconds(List<MeasurementSample> samples, out bool hasStableWindow)
+        {
+            hasStableWindow = false;
+            if (samples == null || samples.Count < 2) return 0.0f;
+            int window = 4;
+            if (samples.Count < window)
+                return (float)Math.Max(0.0, (samples[samples.Count - 1].TimestampUtc - samples[0].TimestampUtc).TotalSeconds);
+
+            for (int i = 0; i <= samples.Count - window; i++)
+            {
+                bool stable = true;
+                float minWeight = float.MaxValue, maxWeight = float.MinValue;
+                float minLeft = float.MaxValue, maxLeft = float.MinValue;
+                float minFront = float.MaxValue, maxFront = float.MinValue;
+                for (int j = 0; j < window; j++)
+                {
+                    MeasurementSample s = samples[i + j];
+                    if (s.StabilityLevel < 3) { stable = false; break; }
+                    if (s.TotalWeightKg < minWeight) minWeight = s.TotalWeightKg;
+                    if (s.TotalWeightKg > maxWeight) maxWeight = s.TotalWeightKg;
+                    if (s.LeftPercent < minLeft) minLeft = s.LeftPercent;
+                    if (s.LeftPercent > maxLeft) maxLeft = s.LeftPercent;
+                    if (s.FrontPercent < minFront) minFront = s.FrontPercent;
+                    if (s.FrontPercent > maxFront) maxFront = s.FrontPercent;
+                }
+                if (!stable) continue;
+                if ((maxWeight - minWeight) > 0.35f) continue;
+                if ((maxLeft - minLeft) > 2.8f || (maxFront - minFront) > 2.8f) continue;
+                hasStableWindow = true;
+                return (float)Math.Max(0.0, (samples[i + window - 1].TimestampUtc - samples[0].TimestampUtc).TotalSeconds);
+            }
+            return (float)Math.Max(0.0, (samples[samples.Count - 1].TimestampUtc - samples[0].TimestampUtc).TotalSeconds);
+        }
+
+        static float BuildStabilityScore(float avgStabilityLevel, float copPath, int driftCount, float weightRangeKg, int sampleCount, float sumLeftDeltaAbs, float sumFrontDeltaAbs)
+        {
+            if (sampleCount <= 1) return 0.0f;
+            float stabilityNorm = Math.Max(0.0f, Math.Min(1.0f, (avgStabilityLevel - 1.0f) / 4.0f));
+            float avgCopStep = copPath / (sampleCount - 1);
+            float copMovePenalty = Math.Max(0.0f, Math.Min(1.0f, (avgCopStep - 0.012f) / 0.06f));
+            float driftPenalty = Math.Max(0.0f, Math.Min(1.0f, (float)driftCount / Math.Max(1, sampleCount - 1) / 0.6f));
+            float weightPenalty = Math.Max(0.0f, Math.Min(1.0f, (weightRangeKg - 0.18f) / 1.6f));
+            float avgBalanceShift = (sumLeftDeltaAbs + sumFrontDeltaAbs) / (sampleCount - 1);
+            float shiftPenalty = Math.Max(0.0f, Math.Min(1.0f, (avgBalanceShift - 1.8f) / 4.5f));
+            float score = 100.0f * (0.34f * stabilityNorm + 0.23f * (1.0f - copMovePenalty) + 0.18f * (1.0f - driftPenalty) + 0.17f * (1.0f - weightPenalty) + 0.08f * (1.0f - shiftPenalty));
+            return Math.Max(0.0f, Math.Min(100.0f, score));
+        }
+
+        static string GetStabilityBandFromScore(float score)
+        {
+            if (score >= 82.0f) return "very steady";
+            if (score >= 65.0f) return "fairly steady";
+            if (score >= 45.0f) return "somewhat unsteady";
+            return "very unsteady";
+        }
+
+        static string ClassifyStanceTendency(float avgLeftPercent, float avgFrontPercent, float centeredThreshold)
+        {
+            float leftDelta = avgLeftPercent - 50.0f;
+            float frontDelta = avgFrontPercent - 50.0f;
+            if (Math.Abs(leftDelta) <= centeredThreshold && Math.Abs(frontDelta) <= centeredThreshold)
+                return "centered stance";
+            if (Math.Abs(leftDelta) >= Math.Abs(frontDelta))
+                return (leftDelta > 0.0f ? "slight left compensation" : "slight right compensation");
+            return (frontDelta > 0.0f ? "slightly forward stance" : "slightly backward stance");
         }
 
         static ESessionQuality ClassifySessionQuality(int sampleCount, float avgStabilityLevel, float weightRangeKg, int driftCount)
@@ -910,6 +1041,10 @@ namespace WiiBalanceScale
                 avgStability /= recentCount;
             }
 
+            insight.RepeatedPatternText = BuildRepeatedPatternText(profileHistory);
+            insight.StabilityPatternText = BuildStabilityPatternText(profileHistory);
+            insight.MatchesUsualPattern = MatchesRepeatedPattern(insight, insight.RepeatedPatternText);
+
             if (!insight.IsStrongEnoughForComparison)
             {
                 insight.SimilarityText = "session quality is too weak for reliable comparison";
@@ -935,13 +1070,14 @@ namespace WiiBalanceScale
             }
 
             insight.AdviceMessages.Clear();
-            if (insight.AverageStabilityLevel < 3.0f) insight.AdviceMessages.Add("Stand still for a few more seconds for a cleaner reading.");
-            if (insight.AverageLeftPercent < 48.5f) insight.AdviceMessages.Add("You were slightly right-leaning today.");
-            else if (insight.AverageLeftPercent > 51.5f) insight.AdviceMessages.Add("You were slightly left-leaning today.");
-            if (insight.AverageFrontPercent < 48.5f) insight.AdviceMessages.Add("You were slightly back-leaning today.");
-            else if (insight.AverageFrontPercent > 51.5f) insight.AdviceMessages.Add("You were slightly forward-leaning today.");
-            if (Math.Abs(insight.AverageLeftPercent - 50.0f) >= 3.5f || Math.Abs(insight.AverageFrontPercent - 50.0f) >= 3.5f)
-                insight.AdviceMessages.Add("The same imbalance repeated across this session.");
+            if (insight.TimeToStabilizeSeconds > 4.0f) insight.AdviceMessages.Add("Settle your feet first, then stay still for a cleaner reading.");
+            if (insight.StabilityScore < 45.0f) insight.AdviceMessages.Add("Try to reduce sway for a few seconds before finishing the reading.");
+            else if (insight.StabilityScore < 65.0f) insight.AdviceMessages.Add("A little less movement would make this reading stronger.");
+            if (!string.Equals(insight.StanceTendencyText, "centered stance", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(insight.StanceTendencyText, "variable stance", StringComparison.OrdinalIgnoreCase))
+                insight.AdviceMessages.Add("Your stance showed " + insight.StanceTendencyText.Replace("slight", "a slight") + " today.");
+            if (string.Equals(insight.StanceTendencyText, "variable stance", StringComparison.OrdinalIgnoreCase))
+                insight.AdviceMessages.Add("Your stance moved around a lot during this session.");
             if (previous != null)
             {
                 if (Math.Abs(insight.StableWeightKg - previous.StableWeightKg) >= 1.5f)
@@ -949,15 +1085,89 @@ namespace WiiBalanceScale
                 if (Math.Abs(insight.AverageLeftPercent - previous.AverageLeftPercent) >= 3.0f || Math.Abs(insight.AverageFrontPercent - previous.AverageFrontPercent) >= 3.0f)
                     insight.AdviceMessages.Add("Your balance pattern changed compared with your previous session.");
             }
-            if (recentCount >= 3)
-            {
-                if (Math.Abs(insight.AverageLeftPercent - avgLeft) >= 4.0f || Math.Abs(insight.AverageFrontPercent - avgFront) >= 4.0f)
-                    insight.AdviceMessages.Add("This session was unusual compared with your recent history.");
-            }
+            if (recentCount >= 3 && !insight.MatchesUsualPattern && IsRepeatedPatternStrong(insight.RepeatedPatternText))
+                insight.AdviceMessages.Add("This session is different from your usual pattern.");
+            if (IsRepeatedPatternStrong(insight.RepeatedPatternText))
+                insight.AdviceMessages.Add("Your repeated pattern is " + insight.RepeatedPatternText.Replace("Repeated pattern: ", "").Replace(".", "") + ".");
             if (insight.AdviceMessages.Count == 0)
                 insight.AdviceMessages.Add("Measurement looked steady and balanced overall.");
             if (!insight.IsStrongEnoughForComparison)
                 insight.AdviceMessages.Add("Try one longer and steadier reading so your next comparison is stronger.");
+            insight.MainAdvice = insight.AdviceMessages[0];
+        }
+
+        static string BuildRepeatedPatternText(List<SessionHistoryRecord> profileHistoryNewestFirst)
+        {
+            List<SessionHistoryRecord> strong = new List<SessionHistoryRecord>();
+            for (int i = 0; i < profileHistoryNewestFirst.Count && strong.Count < 10; i++)
+                if (IsRecordComparable(profileHistoryNewestFirst[i]))
+                    strong.Add(profileHistoryNewestFirst[i]);
+            if (strong.Count < 4)
+                return "Repeated pattern: not enough strong history yet.";
+
+            int leftCount = 0, rightCount = 0, forwardCount = 0, backwardCount = 0, centeredCount = 0;
+            for (int i = 0; i < strong.Count; i++)
+            {
+                string stance = ClassifyStanceTendency(strong[i].AverageLeftPercent, strong[i].AverageFrontPercent, 1.4f);
+                if (stance == "slight left compensation") leftCount++;
+                else if (stance == "slight right compensation") rightCount++;
+                else if (stance == "slightly forward stance") forwardCount++;
+                else if (stance == "slightly backward stance") backwardCount++;
+                else centeredCount++;
+            }
+            int threshold = (int)Math.Ceiling(strong.Count * 0.7f);
+            if (leftCount >= threshold) return "Repeated pattern: often left-leaning.";
+            if (rightCount >= threshold) return "Repeated pattern: often right-leaning.";
+            if (forwardCount >= threshold) return "Repeated pattern: often forward.";
+            if (backwardCount >= threshold) return "Repeated pattern: often backward.";
+            if (centeredCount >= threshold) return "Repeated pattern: usually centered.";
+            return "Repeated pattern: mixed, no strong direction yet.";
+        }
+
+        static string BuildStabilityPatternText(List<SessionHistoryRecord> profileHistoryNewestFirst)
+        {
+            List<SessionHistoryRecord> recent = new List<SessionHistoryRecord>();
+            for (int i = 0; i < profileHistoryNewestFirst.Count && recent.Count < 8; i++)
+                recent.Add(profileHistoryNewestFirst[i]);
+            if (recent.Count < 4) return "stability pattern not ready yet";
+
+            int good = 0, mixed = 0, weak = 0;
+            for (int i = 0; i < recent.Count; i++)
+            {
+                string quality = (recent[i].SessionQualityText == null ? "" : recent[i].SessionQualityText);
+                if (string.Equals(quality, "good session", StringComparison.OrdinalIgnoreCase)) good++;
+                else if (string.Equals(quality, "usable session", StringComparison.OrdinalIgnoreCase)) mixed++;
+                else weak++;
+            }
+            if (good >= (int)Math.Ceiling(recent.Count * 0.65f)) return "stability usually good";
+            if (weak >= (int)Math.Ceiling(recent.Count * 0.45f)) return "stability usually weak";
+            return "stability usually mixed";
+        }
+
+        static bool MatchesRepeatedPattern(SessionInsight insight, string repeatedPatternText)
+        {
+            if (insight == null || repeatedPatternText == null) return false;
+            if (repeatedPatternText.Contains("not enough") || repeatedPatternText.Contains("mixed"))
+                return false;
+            if (repeatedPatternText.Contains("left") && insight.StanceTendencyText.Contains("left")) return true;
+            if (repeatedPatternText.Contains("right") && insight.StanceTendencyText.Contains("right")) return true;
+            if (repeatedPatternText.Contains("forward") && insight.StanceTendencyText.Contains("forward")) return true;
+            if (repeatedPatternText.Contains("backward") && insight.StanceTendencyText.Contains("backward")) return true;
+            if (repeatedPatternText.Contains("centered") && insight.StanceTendencyText.Contains("centered")) return true;
+            return false;
+        }
+
+        static bool IsRepeatedPatternStrong(string repeatedPatternText)
+        {
+            if (string.IsNullOrEmpty(repeatedPatternText)) return false;
+            return !repeatedPatternText.Contains("not enough") && !repeatedPatternText.Contains("mixed");
+        }
+
+        static string GetPatternCheckText(SessionInsight insight)
+        {
+            if (insight == null || !IsRepeatedPatternStrong(insight.RepeatedPatternText))
+                return "usual pattern not clear yet";
+            return (insight.MatchesUsualPattern ? "matches your usual pattern" : "different from your usual pattern");
         }
 
         static bool IsRecordComparable(SessionHistoryRecord record)
@@ -1008,7 +1218,9 @@ namespace WiiBalanceScale
         {
             ProfileInfo profile = GetSelectedProfile();
             LastSessionInsight = BuildSessionInsight(profile);
-            if (LastSessionInsight.AdviceMessages.Count > 0)
+            if (!string.IsNullOrEmpty(LastSessionInsight.MainAdvice))
+                LastSessionAdviceText = "Advice: " + LastSessionInsight.MainAdvice;
+            else if (LastSessionInsight.AdviceMessages.Count > 0)
                 LastSessionAdviceText = "Advice: " + LastSessionInsight.AdviceMessages[0];
             else
                 LastSessionAdviceText = "Advice: Measurement looked steady and balanced overall.";
@@ -1077,7 +1289,8 @@ namespace WiiBalanceScale
             f.lblSessionSummary.Text = LastSessionInsight.SummaryText;
             f.lblSessionComparison.Text = LastSessionInsight.ComparisonText;
             f.lblTrendHighlights.Text = LastSessionInsight.TrendText;
-            f.lblSessionReview.Text = LastSessionInsight.ReviewText + " Quality reason: " + LastSessionInsight.SessionQualityReasonText + ".";
+            f.lblPatternSummary.Text = LastSessionInsight.RepeatedPatternText + " " + LastSessionInsight.StabilityPatternText + ".";
+            f.lblSessionReview.Text = LastSessionInsight.ReviewText + " Main advice: " + LastSessionInsight.MainAdvice + ". Quality reason: " + LastSessionInsight.SessionQualityReasonText + ".";
             f.pnlWeightTrend.Invalidate();
             f.pnlLeftRightTrend.Invalidate();
             f.pnlFrontBackTrend.Invalidate();
@@ -1121,6 +1334,10 @@ namespace WiiBalanceScale
             record.AverageStabilityLevel = insight.AverageStabilityLevel;
             record.AveragePressurePointX = insight.AveragePressurePointX;
             record.AveragePressurePointY = insight.AveragePressurePointY;
+            record.TimeToStabilizeSeconds = insight.TimeToStabilizeSeconds;
+            record.StabilityScore = insight.StabilityScore;
+            record.StabilityBandText = insight.StabilityBandText;
+            record.StanceTendencyText = insight.StanceTendencyText;
             record.SessionQualityText = insight.SessionQualityText;
             record.WeightVsHeightText = insight.WeightVsHeightText;
             record.SummaryText = insight.SummaryText;
@@ -1307,6 +1524,12 @@ namespace WiiBalanceScale
                 sb.Append(s.PressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.StabilityLevel.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(CsvEscape(insight.SessionQualityText)); sb.Append(',');
+                sb.Append(insight.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(insight.StabilityScore.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(CsvEscape(insight.StabilityBandText)); sb.Append(',');
+                sb.Append(CsvEscape(insight.StanceTendencyText)); sb.Append(',');
+                sb.Append(CsvEscape(insight.RepeatedPatternText)); sb.Append(',');
+                sb.Append(CsvEscape(insight.MainAdvice)); sb.Append(',');
                 sb.Append(CsvEscape(insight.ReviewText)); sb.Append(',');
                 sb.Append(CsvEscape(insight.SummaryText)); sb.Append(',');
                 sb.Append(CsvEscape(insight.ComparisonText)); sb.Append(',');
@@ -1336,6 +1559,15 @@ namespace WiiBalanceScale
             sb.AppendLine("  \"session_summary\": {");
             sb.Append("    \"session_quality\": \"").Append(JsonEscape(insight.SessionQualityText)).AppendLine("\",");
             sb.Append("    \"session_quality_reason\": \"").Append(JsonEscape(insight.SessionQualityReasonText)).AppendLine("\",");
+            sb.Append("    \"final_stable_weight_kg\": ").Append(insight.StableWeightKg.ToString("0.000", CultureInfo.InvariantCulture)).AppendLine(",");
+            sb.Append("    \"time_to_stabilize_seconds\": ").Append(insight.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture)).AppendLine(",");
+            sb.Append("    \"stability_score\": ").Append(insight.StabilityScore.ToString("0.0", CultureInfo.InvariantCulture)).AppendLine(",");
+            sb.Append("    \"stability_band\": \"").Append(JsonEscape(insight.StabilityBandText)).AppendLine("\",");
+            sb.Append("    \"stance_tendency\": \"").Append(JsonEscape(insight.StanceTendencyText)).AppendLine("\",");
+            sb.Append("    \"repeated_pattern_if_available\": \"").Append(JsonEscape(insight.RepeatedPatternText)).AppendLine("\",");
+            sb.Append("    \"stability_pattern_if_available\": \"").Append(JsonEscape(insight.StabilityPatternText)).AppendLine("\",");
+            sb.Append("    \"matches_usual_pattern\": ").Append(insight.MatchesUsualPattern ? "true" : "false").AppendLine(",");
+            sb.Append("    \"main_advice\": \"").Append(JsonEscape(insight.MainAdvice)).AppendLine("\",");
             sb.Append("    \"review_text\": \"").Append(JsonEscape(insight.ReviewText)).AppendLine("\",");
             sb.Append("    \"summary_text\": \"").Append(JsonEscape(insight.SummaryText)).AppendLine("\",");
             sb.Append("    \"comparison_text\": \"").Append(JsonEscape(insight.ComparisonText)).AppendLine("\",");
