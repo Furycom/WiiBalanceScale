@@ -139,6 +139,7 @@ namespace WiiBalanceScale
         static readonly List<SessionHistoryRecord> SessionHistory = new List<SessionHistoryRecord>();
         static SessionInsight LastSessionInsight = null;
         static string LastSessionAdviceText = "Advice: Waiting for measurement...";
+        static string LastActiveProfileName = "Default";
 
         static DateTime LastSessionRecordUtc = DateTime.MinValue;
         static int LastStabilityLevel = 0;
@@ -189,6 +190,8 @@ namespace WiiBalanceScale
             f.unitSelectorKg.Checked = true;
             UpdateWeightVsHeightIndicator();
             UpdateSessionInfo();
+            ProfileInfo initialProfile = GetSelectedProfile();
+            LastActiveProfileName = (initialProfile == null ? "Default" : initialProfile.Name);
 
             ConnectBalanceBoard(false);
             if (f == null) return;
@@ -947,9 +950,10 @@ namespace WiiBalanceScale
             f.lblTrendHighlights.Text = LastSessionInsight.TrendText;
         }
 
-        static void SaveCurrentSessionToHistory()
+        static void SaveCurrentSessionToHistory(string profileName = null)
         {
-            ProfileInfo profile = GetSelectedProfile();
+            ProfileInfo profile = (string.IsNullOrEmpty(profileName) ? GetSelectedProfile() : FindProfileByName(profileName));
+            if (profile == null) profile = new ProfileInfo() { Name = (string.IsNullOrEmpty(profileName) ? "Default" : profileName), HeightCm = 0.0f };
             SessionInsight insight = BuildSessionInsight(profile);
             if (!insight.HasEnoughSamples) return;
 
@@ -1015,10 +1019,13 @@ namespace WiiBalanceScale
 
         static void cmbProfiles_SelectedIndexChanged(object sender, EventArgs e)
         {
-            SaveCurrentSessionToHistory();
+            string previousProfileName = LastActiveProfileName;
+            SaveCurrentSessionToHistory(previousProfileName);
             ApplyProfileToInputs();
             UpdateWeightVsHeightIndicator();
             UpdateSessionInfo();
+            ProfileInfo selected = GetSelectedProfile();
+            LastActiveProfileName = (selected == null ? "Default" : selected.Name);
         }
 
         static void btnAddProfile_Click(object sender, EventArgs e)
