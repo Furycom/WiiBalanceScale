@@ -1,0 +1,54 @@
+name: Windows Release Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build solution (Release)
+        run: msbuild WiiBalanceScale.sln /p:Configuration=Release /p:Platform=AnyCPU
+
+      - name: Package Windows release output
+        id: package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+
+          $assetName = "WiiBalanceScale-${{ github.ref_name }}-windows-release.zip"
+          $assetPath = "dist/$assetName"
+
+          Compress-Archive -Path bin/Release/* -DestinationPath $assetPath -Force
+
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+          "asset_path=$assetPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiiBalanceScale-${{ github.ref_name }}-windows-release
+          path: |
+            bin/Release/*
+            ${{ steps.package.outputs.asset_path }}
+          if-no-files-found: error
+
+      - name: Upload zip to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.asset_path }}
+          fail_on_unmatched_files: true
