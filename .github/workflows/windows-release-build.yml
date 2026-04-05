@@ -21,7 +21,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build solution (Release)
-        run: msbuild WiiBalanceScale.sln /p:Configuration=Release /p:Platform=AnyCPU
+        run: msbuild WiiBalanceScale.sln /p:Configuration=Release /p:Platform="Any CPU"
 
       - name: Package Windows release output
         id: package
