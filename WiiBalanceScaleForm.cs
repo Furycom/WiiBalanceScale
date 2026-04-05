@@ -44,6 +44,7 @@ namespace WiiBalanceScale
         internal Label lblGuidance;
         internal Label lblAdvice;
         internal Label lblWeightVsHeight;
+        internal Label lblSessionInfo;
         internal Button btnReset;
         internal GroupBox unitSelector;
         internal RadioButton unitSelectorKg;
@@ -57,8 +58,6 @@ namespace WiiBalanceScale
         internal Label lblLeftRight;
         internal Label lblFrontBack;
         internal Panel pnlCenterOfPressure;
-        internal Panel pnlHistory;
-        internal Label lblHistorySummary;
 
         internal ComboBox cmbProfiles;
         internal TextBox txtProfileName;
@@ -67,13 +66,6 @@ namespace WiiBalanceScale
         internal Button btnClearSession;
         internal Button btnExportCsv;
         internal Button btnExportJson;
-
-        internal CheckBox chkHardwareTest;
-        internal Label lblDiagnosticsStatus;
-        internal Label lblDiagnosticsDetails;
-        internal Label lblCalibrationStatus;
-        internal Button btnCaptureCalibration;
-        internal Label lblHardwareHint;
 
         private System.ComponentModel.IContainer components = null;
 
@@ -92,6 +84,7 @@ namespace WiiBalanceScale
             this.lblGuidance = new Label();
             this.lblAdvice = new Label();
             this.lblWeightVsHeight = new Label();
+            this.lblSessionInfo = new Label();
             this.btnReset = new Button();
             this.unitSelector = new GroupBox();
             this.unitSelectorKg = new RadioButton();
@@ -113,72 +106,64 @@ namespace WiiBalanceScale
             this.lblLeftRight = new Label();
             this.lblFrontBack = new Label();
             this.pnlCenterOfPressure = new Panel();
-            this.pnlHistory = new Panel();
-            this.lblHistorySummary = new Label();
-
-            this.chkHardwareTest = new CheckBox();
-            this.lblDiagnosticsStatus = new Label();
-            this.lblDiagnosticsDetails = new Label();
-            this.lblCalibrationStatus = new Label();
-            this.btnCaptureCalibration = new Button();
-            this.lblHardwareHint = new Label();
 
             GroupBox grpWeight = new GroupBox();
             GroupBox grpProfiles = new GroupBox();
             GroupBox grpSensors = new GroupBox();
             GroupBox grpBalance = new GroupBox();
-            GroupBox grpCop = new GroupBox();
-            GroupBox grpHistory = new GroupBox();
-            GroupBox grpDiagnostics = new GroupBox();
-            GroupBox grpCalibration = new GroupBox();
+            GroupBox grpPressurePoint = new GroupBox();
 
             this.SuspendLayout();
 
             this.AutoScaleDimensions = new SizeF(6F, 13F);
             this.AutoScaleMode = AutoScaleMode.Font;
-            this.ClientSize = new Size(1100, 760);
+            this.ClientSize = new Size(1040, 620);
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
             this.Name = "WiiBalanceScaleForm";
             this.Text = "Wii Balance Scale";
 
             grpWeight.Location = new Point(10, 8);
-            grpWeight.Size = new Size(760, 230);
+            grpWeight.Size = new Size(690, 258);
             grpWeight.Text = "Live weight";
 
-            this.lblWeight.Font = new Font("Lucida Console", 72F);
+            this.lblWeight.Font = new Font("Lucida Console", 68F);
             this.lblWeight.Location = new Point(8, 20);
-            this.lblWeight.Size = new Size(620, 102);
+            this.lblWeight.Size = new Size(550, 98);
             this.lblWeight.Text = "088.710";
             this.lblWeight.TextAlign = ContentAlignment.MiddleCenter;
 
-            this.lblUnit.Font = new Font("Microsoft Sans Serif", 30F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(128)));
-            this.lblUnit.Location = new Point(630, 46);
-            this.lblUnit.Size = new Size(120, 60);
+            this.lblUnit.Font = new Font("Microsoft Sans Serif", 28F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(128)));
+            this.lblUnit.Location = new Point(560, 42);
+            this.lblUnit.Size = new Size(110, 54);
             this.lblUnit.Text = "kg";
 
             Label lblStabilityCaption = new Label();
-            lblStabilityCaption.Location = new Point(12, 122);
+            lblStabilityCaption.Location = new Point(12, 118);
             lblStabilityCaption.Size = new Size(100, 18);
             lblStabilityCaption.Text = "Stability:";
 
-            this.lblQuality.Font = new Font("Wingdings", 42F, FontStyle.Regular, GraphicsUnit.Pixel);
-            this.lblQuality.Location = new Point(108, 116);
-            this.lblQuality.Size = new Size(300, 32);
+            this.lblQuality.Font = new Font("Wingdings", 40F, FontStyle.Regular, GraphicsUnit.Pixel);
+            this.lblQuality.Location = new Point(108, 112);
+            this.lblQuality.Size = new Size(290, 32);
             this.lblQuality.Text = "®®®¡¡";
 
-            this.lblGuidance.Location = new Point(12, 146);
-            this.lblGuidance.Size = new Size(740, 20);
+            this.lblGuidance.Location = new Point(12, 145);
+            this.lblGuidance.Size = new Size(670, 20);
             this.lblGuidance.Text = "Stand still for best accuracy. Center your weight on the board.";
 
             this.lblAdvice.Location = new Point(12, 166);
-            this.lblAdvice.Size = new Size(740, 26);
+            this.lblAdvice.Size = new Size(670, 24);
             this.lblAdvice.Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold);
             this.lblAdvice.Text = "Advice: Waiting for measurement...";
 
-            this.lblWeightVsHeight.Location = new Point(12, 194);
-            this.lblWeightVsHeight.Size = new Size(740, 28);
+            this.lblWeightVsHeight.Location = new Point(12, 192);
+            this.lblWeightVsHeight.Size = new Size(670, 24);
             this.lblWeightVsHeight.Text = "Weight vs height: add profile height to view this indicator.";
+
+            this.lblSessionInfo.Location = new Point(12, 218);
+            this.lblSessionInfo.Size = new Size(670, 30);
+            this.lblSessionInfo.Text = "Session samples: 0";
 
             grpWeight.Controls.Add(this.lblWeight);
             grpWeight.Controls.Add(this.lblUnit);
@@ -187,9 +172,10 @@ namespace WiiBalanceScale
             grpWeight.Controls.Add(this.lblGuidance);
             grpWeight.Controls.Add(this.lblAdvice);
             grpWeight.Controls.Add(this.lblWeightVsHeight);
+            grpWeight.Controls.Add(this.lblSessionInfo);
 
-            this.unitSelector.Location = new Point(10, 244);
-            this.unitSelector.Size = new Size(760, 45);
+            this.unitSelector.Location = new Point(10, 272);
+            this.unitSelector.Size = new Size(690, 45);
             this.unitSelector.Text = "Units";
             this.unitSelector.Visible = false;
 
@@ -209,8 +195,8 @@ namespace WiiBalanceScale
             this.unitSelector.Controls.Add(this.unitSelectorLb);
             this.unitSelector.Controls.Add(this.unitSelectorStone);
 
-            grpProfiles.Location = new Point(780, 8);
-            grpProfiles.Size = new Size(310, 170);
+            grpProfiles.Location = new Point(710, 8);
+            grpProfiles.Size = new Size(320, 178);
             grpProfiles.Text = "Profile";
 
             Label lblProfile = new Label();
@@ -220,33 +206,33 @@ namespace WiiBalanceScale
 
             this.cmbProfiles.DropDownStyle = ComboBoxStyle.DropDownList;
             this.cmbProfiles.Location = new Point(92, 20);
-            this.cmbProfiles.Size = new Size(208, 22);
+            this.cmbProfiles.Size = new Size(218, 22);
 
             this.txtProfileName.Location = new Point(12, 48);
-            this.txtProfileName.Size = new Size(186, 20);
+            this.txtProfileName.Size = new Size(196, 20);
 
-            this.txtProfileHeightCm.Location = new Point(204, 48);
+            this.txtProfileHeightCm.Location = new Point(214, 48);
             this.txtProfileHeightCm.Size = new Size(96, 20);
 
             this.btnAddProfile.Location = new Point(12, 74);
-            this.btnAddProfile.Size = new Size(288, 24);
+            this.btnAddProfile.Size = new Size(298, 24);
             this.btnAddProfile.Text = "Save profile name + height (cm)";
 
             this.btnClearSession.Location = new Point(12, 106);
-            this.btnClearSession.Size = new Size(92, 24);
+            this.btnClearSession.Size = new Size(94, 24);
             this.btnClearSession.Text = "Clear Session";
 
-            this.btnExportCsv.Location = new Point(112, 106);
-            this.btnExportCsv.Size = new Size(92, 24);
+            this.btnExportCsv.Location = new Point(114, 106);
+            this.btnExportCsv.Size = new Size(94, 24);
             this.btnExportCsv.Text = "Export CSV";
 
-            this.btnExportJson.Location = new Point(210, 106);
-            this.btnExportJson.Size = new Size(90, 24);
+            this.btnExportJson.Location = new Point(216, 106);
+            this.btnExportJson.Size = new Size(94, 24);
             this.btnExportJson.Text = "Export JSON";
 
             Label lblProfileHelp = new Label();
             lblProfileHelp.Location = new Point(12, 136);
-            lblProfileHelp.Size = new Size(288, 28);
+            lblProfileHelp.Size = new Size(298, 32);
             lblProfileHelp.Text = "Use name and height in cm (example: 175).";
 
             grpProfiles.Controls.Add(lblProfile);
@@ -260,122 +246,69 @@ namespace WiiBalanceScale
             grpProfiles.Controls.Add(lblProfileHelp);
 
             this.btnReset.Font = new Font("Microsoft Sans Serif", 16F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(128)));
-            this.btnReset.Location = new Point(780, 186);
-            this.btnReset.Size = new Size(310, 46);
+            this.btnReset.Location = new Point(710, 194);
+            this.btnReset.Size = new Size(320, 48);
             this.btnReset.Text = "Zero";
             this.btnReset.UseVisualStyleBackColor = true;
 
-            grpSensors.Location = new Point(10, 298);
-            grpSensors.Size = new Size(430, 170);
+            grpSensors.Location = new Point(10, 326);
+            grpSensors.Size = new Size(350, 220);
             grpSensors.Text = "Corner load (kg)";
 
-            this.lblTopLeft.Location = new Point(18, 30);
-            this.lblTopLeft.Size = new Size(390, 24);
-            this.lblTopLeft.Text = "Top Left: 0.00";
-            this.lblTopRight.Location = new Point(18, 60);
-            this.lblTopRight.Size = new Size(390, 24);
-            this.lblTopRight.Text = "Top Right: 0.00";
-            this.lblBottomLeft.Location = new Point(18, 90);
-            this.lblBottomLeft.Size = new Size(390, 24);
-            this.lblBottomLeft.Text = "Bottom Left: 0.00";
-            this.lblBottomRight.Location = new Point(18, 120);
-            this.lblBottomRight.Size = new Size(390, 24);
-            this.lblBottomRight.Text = "Bottom Right: 0.00";
+            this.lblTopLeft.Location = new Point(18, 34);
+            this.lblTopLeft.Size = new Size(320, 26);
+            this.lblTopLeft.Text = "Top left: 0.00";
+
+            this.lblTopRight.Location = new Point(18, 72);
+            this.lblTopRight.Size = new Size(320, 26);
+            this.lblTopRight.Text = "Top right: 0.00";
+
+            this.lblBottomLeft.Location = new Point(18, 110);
+            this.lblBottomLeft.Size = new Size(320, 26);
+            this.lblBottomLeft.Text = "Bottom left: 0.00";
+
+            this.lblBottomRight.Location = new Point(18, 148);
+            this.lblBottomRight.Size = new Size(320, 26);
+            this.lblBottomRight.Text = "Bottom right: 0.00";
 
             grpSensors.Controls.Add(this.lblTopLeft);
             grpSensors.Controls.Add(this.lblTopRight);
             grpSensors.Controls.Add(this.lblBottomLeft);
             grpSensors.Controls.Add(this.lblBottomRight);
 
-            grpBalance.Location = new Point(450, 298);
-            grpBalance.Size = new Size(320, 170);
+            grpBalance.Location = new Point(370, 326);
+            grpBalance.Size = new Size(330, 220);
             grpBalance.Text = "Balance";
 
-            this.lblLeftRight.Location = new Point(18, 38);
-            this.lblLeftRight.Size = new Size(280, 42);
+            this.lblLeftRight.Location = new Point(18, 42);
+            this.lblLeftRight.Size = new Size(300, 56);
             this.lblLeftRight.Font = new Font("Microsoft Sans Serif", 12F, FontStyle.Bold);
             this.lblLeftRight.Text = "Left / Right balance: 50.0% / 50.0%";
 
-            this.lblFrontBack.Location = new Point(18, 84);
-            this.lblFrontBack.Size = new Size(280, 42);
+            this.lblFrontBack.Location = new Point(18, 112);
+            this.lblFrontBack.Size = new Size(300, 56);
             this.lblFrontBack.Font = new Font("Microsoft Sans Serif", 12F, FontStyle.Bold);
             this.lblFrontBack.Text = "Front / Back balance: 50.0% / 50.0%";
 
             grpBalance.Controls.Add(this.lblLeftRight);
             grpBalance.Controls.Add(this.lblFrontBack);
 
-            grpCop.Location = new Point(780, 238);
-            grpCop.Size = new Size(310, 230);
-            grpCop.Text = "Pressure point";
+            grpPressurePoint.Location = new Point(710, 250);
+            grpPressurePoint.Size = new Size(320, 296);
+            grpPressurePoint.Text = "Pressure point";
 
             this.pnlCenterOfPressure.BorderStyle = BorderStyle.FixedSingle;
             this.pnlCenterOfPressure.Location = new Point(14, 24);
-            this.pnlCenterOfPressure.Size = new Size(280, 170);
+            this.pnlCenterOfPressure.Size = new Size(292, 234);
             this.pnlCenterOfPressure.BackColor = Color.White;
 
-            Label lblCopHelp = new Label();
-            lblCopHelp.Location = new Point(14, 198);
-            lblCopHelp.Size = new Size(280, 24);
-            lblCopHelp.Text = "Crosshair is center. Dot shows pressure point.";
+            Label lblPressureHelp = new Label();
+            lblPressureHelp.Location = new Point(14, 262);
+            lblPressureHelp.Size = new Size(292, 24);
+            lblPressureHelp.Text = "Crosshair is center. Dot shows pressure point.";
 
-            grpCop.Controls.Add(this.pnlCenterOfPressure);
-            grpCop.Controls.Add(lblCopHelp);
-
-            grpHistory.Location = new Point(10, 476);
-            grpHistory.Size = new Size(760, 272);
-            grpHistory.Text = "Session trend";
-
-            this.pnlHistory.BorderStyle = BorderStyle.FixedSingle;
-            this.pnlHistory.Location = new Point(12, 24);
-            this.pnlHistory.Size = new Size(736, 180);
-            this.pnlHistory.BackColor = Color.White;
-
-            this.lblHistorySummary.Location = new Point(12, 210);
-            this.lblHistorySummary.Size = new Size(736, 52);
-            this.lblHistorySummary.Text = "No measurements yet.";
-
-            grpHistory.Controls.Add(this.pnlHistory);
-            grpHistory.Controls.Add(this.lblHistorySummary);
-
-            grpDiagnostics.Location = new Point(780, 476);
-            grpDiagnostics.Size = new Size(310, 170);
-            grpDiagnostics.Text = "Hardware check";
-
-            this.chkHardwareTest.Location = new Point(12, 22);
-            this.chkHardwareTest.Size = new Size(286, 22);
-            this.chkHardwareTest.Text = "Enable hardware check mode";
-
-            this.lblHardwareHint.Location = new Point(12, 44);
-            this.lblHardwareHint.Size = new Size(286, 30);
-            this.lblHardwareHint.Text = "Helps detect weak corners and idle drift.";
-
-            this.lblDiagnosticsStatus.Location = new Point(12, 78);
-            this.lblDiagnosticsStatus.Size = new Size(286, 22);
-            this.lblDiagnosticsStatus.Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold);
-            this.lblDiagnosticsStatus.Text = "Hardware status: Waiting for data";
-
-            this.lblDiagnosticsDetails.Location = new Point(12, 102);
-            this.lblDiagnosticsDetails.Size = new Size(286, 60);
-
-            grpDiagnostics.Controls.Add(this.chkHardwareTest);
-            grpDiagnostics.Controls.Add(this.lblHardwareHint);
-            grpDiagnostics.Controls.Add(this.lblDiagnosticsStatus);
-            grpDiagnostics.Controls.Add(this.lblDiagnosticsDetails);
-
-            grpCalibration.Location = new Point(780, 650);
-            grpCalibration.Size = new Size(310, 98);
-            grpCalibration.Text = "Zero calibration";
-
-            this.btnCaptureCalibration.Location = new Point(12, 24);
-            this.btnCaptureCalibration.Size = new Size(286, 24);
-            this.btnCaptureCalibration.Text = "Capture zero offsets (board unloaded)";
-
-            this.lblCalibrationStatus.Location = new Point(12, 54);
-            this.lblCalibrationStatus.Size = new Size(286, 34);
-            this.lblCalibrationStatus.Text = "No zero offsets captured this session.";
-
-            grpCalibration.Controls.Add(this.btnCaptureCalibration);
-            grpCalibration.Controls.Add(this.lblCalibrationStatus);
+            grpPressurePoint.Controls.Add(this.pnlCenterOfPressure);
+            grpPressurePoint.Controls.Add(lblPressureHelp);
 
             this.Controls.Add(grpWeight);
             this.Controls.Add(this.unitSelector);
@@ -383,10 +316,7 @@ namespace WiiBalanceScale
             this.Controls.Add(this.btnReset);
             this.Controls.Add(grpSensors);
             this.Controls.Add(grpBalance);
-            this.Controls.Add(grpCop);
-            this.Controls.Add(grpHistory);
-            this.Controls.Add(grpDiagnostics);
-            this.Controls.Add(grpCalibration);
+            this.Controls.Add(grpPressurePoint);
 
             this.ResumeLayout(false);
         }
