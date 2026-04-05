@@ -2541,7 +2541,7 @@ namespace WiimoteLib
 			return true;
 		}
 
-		private bool bCancel = false, bDidConnect = false;
+		private bool bCancel = false, bDidConnect = false, bHadError = false;
 		private Thread Worker = null;
 
 		public bool ConnectNextWiiMote()
@@ -2561,14 +2561,14 @@ namespace WiimoteLib
 			//if (handle != IntPtr.Zero) BluetoothFindDeviceClose(handle);
 
 			Worker = new Thread(new ThreadStart(delegate() { this.ThreadConnect(); }));
-			bCancel = bDidConnect = false;
+			bCancel = bDidConnect = bHadError = false;
 			Worker.Start();
 			return true;
 		}
 
 		public bool IsRunning()  { return Worker != null && Worker.IsAlive; }
 		public bool DidConnect() { return !IsRunning() && bDidConnect;  }
-		public bool HadError()   { return !IsRunning() && !bDidConnect;  }
+		public bool HadError()   { return !IsRunning() && bHadError;  }
 		public void Cancel()     { bCancel = IsRunning();  }
 
 		private void ThreadConnect()
@@ -2581,17 +2581,18 @@ namespace WiimoteLib
 			sp.fIssueInquiry = sp.fReturnAuthenticated = sp.fReturnConnected = sp.fReturnRemembered = sp.fReturnUnknown = true;
 			sp.cTimeoutMultiplier = 1;
 
-			bool HadError = false;
-			while (!bCancel && !bDidConnect && !HadError)
+			const int ScanTimeoutMilliseconds = 15000;
+			DateTime scanStart = DateTime.UtcNow;
+			while (!bCancel && !bDidConnect && !bHadError && (DateTime.UtcNow - scanStart).TotalMilliseconds < ScanTimeoutMilliseconds)
 			{
 				IntPtr handle = BluetoothFindFirstDevice(ref sp, ref dev);
 				if (handle == IntPtr.Zero)
 				{
 					int lasterror = Marshal.GetLastWin32Error();
-					if (lasterror != ERROR_SUCCESS && lasterror != ERROR_NO_MORE_ITEMS) HadError = true;
+					if (lasterror != ERROR_SUCCESS && lasterror != ERROR_NO_MORE_ITEMS) bHadError = true;
 					continue;
 				}
-				while (!bCancel && !bDidConnect && !HadError)
+				while (!bCancel && !bDidConnect && !bHadError)
 				{
 					if (dev.szName.StartsWith("Nintendo RVL"))
 					{
@@ -2602,7 +2603,7 @@ namespace WiimoteLib
 						else if (BluetoothSetServiceState(IntPtr.Zero, ref dev, ref HumanInterfaceDeviceServiceClass_UUID, BLUETOOTH_SERVICE_ENABLE) != 0)
 						{
 							int lasterror = Marshal.GetLastWin32Error();
-							if (lasterror != ERROR_SUCCESS) HadError = true;
+							if (lasterror != ERROR_SUCCESS) bHadError = true;
 						}
 						else
 						{

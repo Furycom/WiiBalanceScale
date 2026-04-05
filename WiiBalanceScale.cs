@@ -254,6 +254,16 @@ namespace WiiBalanceScale
                     return;
                 }
 
+                if (!cm.DidConnect())
+                {
+                    SetConnectionError(EConnectionError.NoDeviceFound, "Bluetooth scan timed out without finding a Wii Balance Board.");
+
+                    BoardTimer.Stop();
+                    System.Windows.Forms.MessageBox.Show(f, GetConnectionErrorMessage(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Shutdown();
+                    return;
+                }
+
                 if (LastConnectionError == EConnectionError.None)
                     SetConnectionError(EConnectionError.NoDeviceFound, "Connection scan finished without a matching device.");
 
