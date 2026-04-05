@@ -160,6 +160,30 @@ namespace WiiBalanceScale
             return text;
         }
 
+        static void ApplyScannerStatusToConnectionError()
+        {
+            ConnectionManager.ScanStatus scanStatus = (cm == null ? null : cm.GetLastScanStatus());
+            if (scanStatus == null || scanStatus.Result == ConnectionManager.EScanResult.None)
+                return;
+
+            string detail = scanStatus.Detail;
+            if (scanStatus.ErrorCode != 0)
+                detail += (string.IsNullOrEmpty(detail) ? "" : " ") + "(Error " + scanStatus.ErrorCode.ToString() + ")";
+
+            switch (scanStatus.Result)
+            {
+                case ConnectionManager.EScanResult.PermissionDenied:
+                    SetConnectionError(EConnectionError.PermissionDenied, detail);
+                    return;
+                case ConnectionManager.EScanResult.BluetoothApiFailure:
+                    SetConnectionError(EConnectionError.NoBluetoothAdapter, detail);
+                    return;
+                case ConnectionManager.EScanResult.NoDeviceFound:
+                    SetConnectionError(EConnectionError.NoDeviceFound, detail);
+                    return;
+            }
+        }
+
         static void ConnectBalanceBoard(bool WasJustConnected)
         {
             bool Connected = true;
@@ -232,6 +256,8 @@ namespace WiiBalanceScale
 
                 if (cm.HadError())
                 {
+                    ApplyScannerStatusToConnectionError();
+
                     if (!DidTryElevation)
                     {
                         DidTryElevation = true;
@@ -246,7 +272,7 @@ namespace WiiBalanceScale
                     }
 
                     if (LastConnectionError == EConnectionError.None)
-                        SetConnectionError(EConnectionError.NoBluetoothAdapter, "Connection manager reported a bluetooth error.");
+                        SetConnectionError(EConnectionError.NoBluetoothAdapter, "Connection manager reported a bluetooth error without a specific cause.");
 
                     BoardTimer.Stop();
                     System.Windows.Forms.MessageBox.Show(f, GetConnectionErrorMessage(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -256,6 +282,8 @@ namespace WiiBalanceScale
 
                 if (!cm.DidConnect())
                 {
+                    ApplyScannerStatusToConnectionError();
+
                     if (LastConnectionError == EConnectionError.None)
                         SetConnectionError(EConnectionError.NoDeviceFound, "Bluetooth scan timed out without finding a Wii Balance Board.");
 
