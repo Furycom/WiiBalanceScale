@@ -1,29 +1,18 @@
-# WiiBalanceScale 1.4.0 (Draft)
+# WiiBalanceScale v1.4.0
 
-Stabilization and release-readiness update focused on QA hardening, edge-case handling, and clearer plain-language messaging.
+A stabilization-focused release that improves connection reliability, measurement clarity, profile-aware history, and export behavior.
 
-## Highlights since 1.3.1
-- Added runtime hardening for session finalization, repeated-save deduplication, and safer history writes.
-- Improved backward compatibility handling for `profiles.csv` and legacy session history shapes.
-- Polished edge-case messaging for weak/early sessions and ambiguous trend/pattern outcomes.
-- Improved profile handling by allowing optional (blank) height entries.
-- Updated exports to be profile-focused (selected profile only) to avoid cross-profile mixed output.
-- Reduced risk of UI text overflow by trimming long summary/review labels for readability.
+## Highlights
+- Improved Bluetooth reliability and scan-state handling, with clearer connection error mapping.
+- Fixed Windows 11 quality indicator symbol rendering so quality stars display correctly.
+- Expanded profile-aware behavior: optional profile height, profile-focused history, and profile-scoped exports.
+- Improved session intelligence with plain-language summary/review text, comparisons, trend highlights, and posture/stability insights.
+- Added QA/stability hardening for weak/early sessions, duplicate-save prevention, and safer history persistence.
 
-## QA / Stability hardening
-- Added defensive guard for connection tick handling when the balance-board object is unexpectedly null.
-- Added per-profile session end tracking to prevent duplicate history records on repeated saves and profile switch/save cycles.
-- Switched session history persistence to a temporary-file write then move strategy to reduce corruption risk on interrupted saves.
-- Normalized key serialized values (non-negative sample count/height/time and bounded stability score).
-
-## Backward compatibility
-- `profiles.csv` now tolerates headers/comments and quoted CSV values while still accepting old formats.
-- `session_history.csv` loading remains compatible with older column sets (existing fallback behavior retained).
-
-## Product polish
-- Clarified profile height input behavior with explicit support for blank height.
-- Improved trend text fallback when there is no clear directional signal.
-- Clear-session now resets advice text immediately to avoid stale guidance.
+## Included in this release
+- Better handling around connection/session edge cases and null/transition states.
+- Backward-compatible loading for existing `profiles.csv` and `session_history.csv` data.
+- Cleaner fallback wording when a session does not have enough data for strong analysis.
 
 ## Version
 - Application version: `1.4.0.0`
