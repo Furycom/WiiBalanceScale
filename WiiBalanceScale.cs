@@ -116,7 +116,16 @@ namespace WiiBalanceScale
         {
             if (BoardTimer != null) { BoardTimer.Stop(); BoardTimer = null; }
             if (cm != null) { cm.Cancel(); cm = null; }
+            CleanupBalanceBoard();
             if (f != null) { if (f.Visible) f.Close(); f = null; }
+        }
+
+        static void CleanupBalanceBoard()
+        {
+            if (bb == null) return;
+            try { bb.Disconnect(); } catch { }
+            try { bb.Dispose(); } catch { }
+            bb = null;
         }
 
         static void SetConnectionError(EConnectionError error, string detail)
@@ -154,6 +163,7 @@ namespace WiiBalanceScale
         static void ConnectBalanceBoard(bool WasJustConnected)
         {
             bool Connected = true;
+            CleanupBalanceBoard();
             try
             {
                 bb = new Wiimote();
