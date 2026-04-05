@@ -18,6 +18,10 @@ Below the weight you can find a gauge indicating the quality/accuracy of the mea
 
 Use the unit selector to choose between kilograms (kg), pounds (lbs) and stone/pounds (st/lbs).
 
+Profiles can be saved with or without a height value. If height is provided, the app shows a simple weight-vs-height indicator with plain-language guidance.
+
+Session exports now follow the selected profile, and weak/early sessions are handled with clearer "not enough data yet" wording.
+
 ![Screenshot](README.png)
 
 ## Troubleshooting

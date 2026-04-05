@@ -37,8 +37,8 @@ using RadioButton = System.Windows.Forms.RadioButton;
 
 [assembly: System.Reflection.AssemblyTitle("WiiBalanceScale")]
 [assembly: System.Reflection.AssemblyProduct("WiiBalanceScale")]
-[assembly: System.Reflection.AssemblyVersion("1.3.1.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.3.1.0")]
+[assembly: System.Reflection.AssemblyVersion("1.4.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.4.0.0")]
 [assembly: System.Runtime.InteropServices.ComVisible(false)]
 
 namespace WiiBalanceScale
@@ -158,6 +158,7 @@ namespace WiiBalanceScale
         static readonly List<MeasurementSample> SessionMeasurements = new List<MeasurementSample>();
         static readonly List<ProfileInfo> Profiles = new List<ProfileInfo>();
         static readonly List<SessionHistoryRecord> SessionHistory = new List<SessionHistoryRecord>();
+        static readonly Dictionary<string, DateTime> LastSavedSessionEndUtcByProfile = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         static SessionInsight LastSessionInsight = null;
         static string LastSessionAdviceText = "Advice: Waiting for measurement...";
         static string LastActiveProfileName = "Default";
@@ -258,12 +259,24 @@ namespace WiiBalanceScale
                     if (lines[i] == null) continue;
                     string line = lines[i].Trim();
                     if (line.Length == 0) continue;
-                    string[] parts = line.Split(',');
-                    string name = parts[0].Trim();
-                    if (name.Length == 0 || FindProfileByName(name) != null) continue;
+
+                    string[] parts = SplitCsvLine(line);
+                    if (parts.Length == 0) continue;
+
+                    string firstValue = (parts[0] == null ? "" : parts[0].Trim());
+                    if (firstValue.Length == 0) continue;
+                    if (string.Equals(firstValue, "profile", StringComparison.OrdinalIgnoreCase) || firstValue.StartsWith("#"))
+                        continue;
+                    if (FindProfileByName(firstValue) != null) continue;
+
                     float height = 0.0f;
-                    if (parts.Length > 1) float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out height);
-                    Profiles.Add(new ProfileInfo() { Name = name, HeightCm = height });
+                    if (parts.Length > 1)
+                    {
+                        string heightRaw = (parts[1] == null ? "" : parts[1].Trim());
+                        if (heightRaw.Length > 0)
+                            float.TryParse(heightRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out height);
+                    }
+                    Profiles.Add(new ProfileInfo() { Name = firstValue, HeightCm = Math.Max(0.0f, height) });
                 }
             }
             else if (File.Exists(LegacyProfilesPath))
@@ -383,6 +396,7 @@ namespace WiiBalanceScale
         static void LoadSessionHistory()
         {
             SessionHistory.Clear();
+            LastSavedSessionEndUtcByProfile.Clear();
             if (!File.Exists(SessionHistoryPath)) return;
 
             try
@@ -453,6 +467,9 @@ namespace WiiBalanceScale
                         record.AdviceText = parts[14];
                     }
                     SessionHistory.Add(record);
+                    DateTime previousLastSavedUtc;
+                    if (!LastSavedSessionEndUtcByProfile.TryGetValue(record.ProfileName, out previousLastSavedUtc) || record.TimestampUtc > previousLastSavedUtc)
+                        LastSavedSessionEndUtcByProfile[record.ProfileName] = record.TimestampUtc;
                 }
             }
             catch
@@ -470,16 +487,16 @@ namespace WiiBalanceScale
                 SessionHistoryRecord r = SessionHistory[i];
                 sb.Append(r.TimestampUtc.ToString("o", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(CsvEscape(r.ProfileName)); sb.Append(',');
-                sb.Append(r.ProfileHeightCm.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
-                sb.Append(r.SampleCount.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(Math.Max(0.0f, r.ProfileHeightCm).ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(Math.Max(0, r.SampleCount).ToString(CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.StableWeightKg.ToString("0.000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AverageLeftPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AverageFrontPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AverageStabilityLevel.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AveragePressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AveragePressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
-                sb.Append(r.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
-                sb.Append(r.StabilityScore.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(Math.Max(0.0f, r.TimeToStabilizeSeconds).ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(Math.Max(0.0f, Math.Min(100.0f, r.StabilityScore)).ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(CsvEscape(r.StabilityBandText)); sb.Append(',');
                 sb.Append(CsvEscape(r.StanceTendencyText)); sb.Append(',');
                 sb.Append(CsvEscape(r.SessionQualityText)); sb.Append(',');
@@ -491,7 +508,12 @@ namespace WiiBalanceScale
                 sb.Append(CsvEscape(r.AdviceText));
                 sb.AppendLine();
             }
-            File.WriteAllText(SessionHistoryPath, sb.ToString(), Encoding.UTF8);
+
+            string tempPath = SessionHistoryPath + ".tmp";
+            File.WriteAllText(tempPath, sb.ToString(), Encoding.UTF8);
+            if (File.Exists(SessionHistoryPath))
+                File.Delete(SessionHistoryPath);
+            File.Move(tempPath, SessionHistoryPath);
         }
 
         static void SetConnectionError(EConnectionError error, string detail)
@@ -665,6 +687,12 @@ namespace WiiBalanceScale
                 }
 
                 ConnectBalanceBoard(true);
+                return;
+            }
+
+            if (bb == null)
+            {
+                ConnectBalanceBoard(false);
                 return;
             }
 
@@ -1204,6 +1232,8 @@ namespace WiiBalanceScale
             else if (insight.AverageStabilityLevel > avgStability + 0.5f)
                 highlights.Add("this session was steadier than usual");
 
+            if (highlights.Count == 0)
+                highlights.Add("no clear direction yet");
             return "Recent trend: " + string.Join("; ", highlights.ToArray()) + ".";
         }
 
@@ -1212,6 +1242,23 @@ namespace WiiBalanceScale
             string direction = (Math.Abs(value) < 0.0001f ? "no change" : (value > 0.0f ? "up " : "down "));
             if (direction == "no change") return "no change";
             return direction + Math.Abs(value).ToString("0.0", CultureInfo.InvariantCulture) + " " + unit;
+        }
+
+        static string TruncateForLabel(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLength) return text;
+            if (maxLength <= 3) return text.Substring(0, Math.Max(0, maxLength));
+            return text.Substring(0, maxLength - 3) + "...";
+        }
+
+        static int CountSamplesForProfile(string profileName)
+        {
+            if (string.IsNullOrEmpty(profileName)) return 0;
+            int count = 0;
+            for (int i = 0; i < SessionMeasurements.Count; i++)
+                if (string.Equals(SessionMeasurements[i].ProfileName, profileName, StringComparison.OrdinalIgnoreCase))
+                    count++;
+            return count;
         }
 
         static void UpdateAdviceMessage()
@@ -1286,11 +1333,11 @@ namespace WiiBalanceScale
             if (LastSessionInsight == null || !string.Equals(LastSessionInsight.ProfileName, (profile == null ? "Default" : profile.Name), StringComparison.OrdinalIgnoreCase))
                 LastSessionInsight = BuildSessionInsight(profile);
 
-            f.lblSessionSummary.Text = LastSessionInsight.SummaryText;
-            f.lblSessionComparison.Text = LastSessionInsight.ComparisonText;
-            f.lblTrendHighlights.Text = LastSessionInsight.TrendText;
-            f.lblPatternSummary.Text = LastSessionInsight.RepeatedPatternText + " " + LastSessionInsight.StabilityPatternText + ".";
-            f.lblSessionReview.Text = LastSessionInsight.ReviewText + " Main advice: " + LastSessionInsight.MainAdvice + ". Quality reason: " + LastSessionInsight.SessionQualityReasonText + ".";
+            f.lblSessionSummary.Text = TruncateForLabel(LastSessionInsight.SummaryText, 150);
+            f.lblSessionComparison.Text = TruncateForLabel(LastSessionInsight.ComparisonText, 150);
+            f.lblTrendHighlights.Text = TruncateForLabel(LastSessionInsight.TrendText, 150);
+            f.lblPatternSummary.Text = TruncateForLabel(LastSessionInsight.RepeatedPatternText + " " + LastSessionInsight.StabilityPatternText + ".", 150);
+            f.lblSessionReview.Text = TruncateForLabel(LastSessionInsight.ReviewText + " Main advice: " + LastSessionInsight.MainAdvice + ". Quality reason: " + LastSessionInsight.SessionQualityReasonText + ".", 190);
             f.pnlWeightTrend.Invalidate();
             f.pnlLeftRightTrend.Invalidate();
             f.pnlFrontBackTrend.Invalidate();
@@ -1304,6 +1351,11 @@ namespace WiiBalanceScale
             SessionInsight insight = BuildSessionInsight(profile);
             if (!insight.HasEnoughSamples) return;
             if (insight.SessionQuality == ESessionQuality.UnstableSession) return;
+            if (insight.EndedUtc == DateTime.MinValue) return;
+
+            DateTime lastSavedEndUtc;
+            if (LastSavedSessionEndUtcByProfile.TryGetValue(insight.ProfileName, out lastSavedEndUtc) && insight.EndedUtc <= lastSavedEndUtc)
+                return;
 
             bool hasSimilarRecent = false;
             for (int i = SessionHistory.Count - 1; i >= 0; i--)
@@ -1346,6 +1398,7 @@ namespace WiiBalanceScale
             record.TrendText = insight.TrendText;
             record.AdviceText = string.Join(" | ", insight.AdviceMessages.ToArray());
             SessionHistory.Add(record);
+            LastSavedSessionEndUtcByProfile[insight.ProfileName] = insight.EndedUtc;
 
             if (SessionHistory.Count > 500)
                 SessionHistory.RemoveRange(0, SessionHistory.Count - 500);
@@ -1396,16 +1449,20 @@ namespace WiiBalanceScale
                 return;
             }
 
-            float heightCm;
-            if (!float.TryParse((f.txtProfileHeightCm.Text == null ? "" : f.txtProfileHeightCm.Text.Trim()), NumberStyles.Float, CultureInfo.InvariantCulture, out heightCm))
+            string heightText = (f.txtProfileHeightCm.Text == null ? "" : f.txtProfileHeightCm.Text.Trim());
+            float heightCm = 0.0f;
+            if (heightText.Length > 0)
             {
-                MessageBox.Show(f, "Enter a numeric height in centimeters.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            if (heightCm < 80.0f || heightCm > 250.0f)
-            {
-                MessageBox.Show(f, "Height should be between 80 and 250 cm.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                if (!float.TryParse(heightText, NumberStyles.Float, CultureInfo.InvariantCulture, out heightCm))
+                {
+                    MessageBox.Show(f, "Enter a numeric height in centimeters (or leave it blank).", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                if (heightCm < 80.0f || heightCm > 250.0f)
+                {
+                    MessageBox.Show(f, "Height should be between 80 and 250 cm, or left blank.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
             }
 
             ProfileInfo existing = FindProfileByName(name);
@@ -1432,14 +1489,18 @@ namespace WiiBalanceScale
             SessionMeasurements.Clear();
             LastSessionRecordUtc = DateTime.MinValue;
             LastSessionInsight = null;
+            LastSessionAdviceText = "Advice: Waiting for measurement...";
+            f.lblAdvice.Text = LastSessionAdviceText;
             UpdateSessionInfo();
         }
 
         static void btnExportCsv_Click(object sender, EventArgs e)
         {
-            if (SessionMeasurements.Count == 0)
+            ProfileInfo selectedProfile = GetSelectedProfile();
+            string selectedName = (selectedProfile == null ? "Default" : selectedProfile.Name);
+            if (CountSamplesForProfile(selectedName) == 0)
             {
-                MessageBox.Show(f, "No session samples to export yet.", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(f, "No samples for the selected profile to export yet.", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -1461,9 +1522,11 @@ namespace WiiBalanceScale
 
         static void btnExportJson_Click(object sender, EventArgs e)
         {
-            if (SessionMeasurements.Count == 0)
+            ProfileInfo selectedProfile = GetSelectedProfile();
+            string selectedName = (selectedProfile == null ? "Default" : selectedProfile.Name);
+            if (CountSamplesForProfile(selectedName) == 0)
             {
-                MessageBox.Show(f, "No session samples to export yet.", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(f, "No samples for the selected profile to export yet.", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -1505,9 +1568,18 @@ namespace WiiBalanceScale
             string adviceText = string.Join(" | ", insight.AdviceMessages.ToArray());
             StringBuilder sb = new StringBuilder();
             sb.AppendLine(CsvHeader);
+            string selectedProfileName = insight.ProfileName;
+            List<MeasurementSample> exportSamples = new List<MeasurementSample>();
             for (int i = 0; i < SessionMeasurements.Count; i++)
             {
-                MeasurementSample s = SessionMeasurements[i];
+                MeasurementSample current = SessionMeasurements[i];
+                if (string.Equals(current.ProfileName, selectedProfileName, StringComparison.OrdinalIgnoreCase))
+                    exportSamples.Add(current);
+            }
+
+            for (int i = 0; i < exportSamples.Count; i++)
+            {
+                MeasurementSample s = exportSamples[i];
                 sb.Append(s.TimestampUtc.ToString("o", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(CsvEscape(s.ProfileName)); sb.Append(',');
                 sb.Append(s.ProfileHeightCm.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
@@ -1582,9 +1654,18 @@ namespace WiiBalanceScale
             sb.AppendLine("]");
             sb.AppendLine("  },");
             sb.AppendLine("  \"samples\": [");
+            string selectedProfileName = insight.ProfileName;
+            List<MeasurementSample> exportSamples = new List<MeasurementSample>();
             for (int i = 0; i < SessionMeasurements.Count; i++)
             {
-                MeasurementSample s = SessionMeasurements[i];
+                MeasurementSample current = SessionMeasurements[i];
+                if (string.Equals(current.ProfileName, selectedProfileName, StringComparison.OrdinalIgnoreCase))
+                    exportSamples.Add(current);
+            }
+
+            for (int i = 0; i < exportSamples.Count; i++)
+            {
+                MeasurementSample s = exportSamples[i];
                 sb.AppendLine("    {");
                 sb.Append("      \"timestamp_utc\": \"").Append(s.TimestampUtc.ToString("o", CultureInfo.InvariantCulture)).AppendLine("\",");
                 sb.Append("      \"profile\": \"").Append(JsonEscape(s.ProfileName)).AppendLine("\",");
@@ -1602,7 +1683,7 @@ namespace WiiBalanceScale
                 sb.Append("      \"pressure_point_y\": ").Append(s.PressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)).AppendLine(",");
                 sb.Append("      \"stability_level\": ").Append(s.StabilityLevel.ToString(CultureInfo.InvariantCulture)).AppendLine();
                 sb.Append("    }");
-                if (i < SessionMeasurements.Count - 1) sb.Append(',');
+                if (i < exportSamples.Count - 1) sb.Append(',');
                 sb.AppendLine();
             }
             sb.AppendLine("  ]");
