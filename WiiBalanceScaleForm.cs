@@ -48,6 +48,11 @@ namespace WiiBalanceScale
         internal Label lblSessionSummary;
         internal Label lblSessionComparison;
         internal Label lblTrendHighlights;
+        internal Label lblSessionReview;
+        internal Panel pnlWeightTrend;
+        internal Panel pnlLeftRightTrend;
+        internal Panel pnlFrontBackTrend;
+        internal Panel pnlStabilityTrend;
         internal Button btnReset;
         internal GroupBox unitSelector;
         internal RadioButton unitSelectorKg;
@@ -91,6 +96,11 @@ namespace WiiBalanceScale
             this.lblSessionSummary = new Label();
             this.lblSessionComparison = new Label();
             this.lblTrendHighlights = new Label();
+            this.lblSessionReview = new Label();
+            this.pnlWeightTrend = new Panel();
+            this.pnlLeftRightTrend = new Panel();
+            this.pnlFrontBackTrend = new Panel();
+            this.pnlStabilityTrend = new Panel();
             this.btnReset = new Button();
             this.unitSelector = new GroupBox();
             this.unitSelectorKg = new RadioButton();
@@ -118,19 +128,20 @@ namespace WiiBalanceScale
             GroupBox grpSensors = new GroupBox();
             GroupBox grpBalance = new GroupBox();
             GroupBox grpPressurePoint = new GroupBox();
+            GroupBox grpTrends = new GroupBox();
 
             this.SuspendLayout();
 
             this.AutoScaleDimensions = new SizeF(6F, 13F);
             this.AutoScaleMode = AutoScaleMode.Font;
-            this.ClientSize = new Size(1040, 620);
+            this.ClientSize = new Size(1040, 760);
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
             this.Name = "WiiBalanceScaleForm";
             this.Text = "Wii Balance Scale";
 
             grpWeight.Location = new Point(10, 8);
-            grpWeight.Size = new Size(690, 312);
+            grpWeight.Size = new Size(690, 360);
             grpWeight.Text = "Live weight";
 
             this.lblWeight.Font = new Font("Lucida Console", 68F);
@@ -183,6 +194,10 @@ namespace WiiBalanceScale
             this.lblTrendHighlights.Size = new Size(670, 18);
             this.lblTrendHighlights.Text = "Recent trend: not enough history yet.";
 
+            this.lblSessionReview.Location = new Point(12, 306);
+            this.lblSessionReview.Size = new Size(670, 46);
+            this.lblSessionReview.Text = "Session review: waiting for enough samples...";
+
             grpWeight.Controls.Add(this.lblWeight);
             grpWeight.Controls.Add(this.lblUnit);
             grpWeight.Controls.Add(lblStabilityCaption);
@@ -194,8 +209,9 @@ namespace WiiBalanceScale
             grpWeight.Controls.Add(this.lblSessionSummary);
             grpWeight.Controls.Add(this.lblSessionComparison);
             grpWeight.Controls.Add(this.lblTrendHighlights);
+            grpWeight.Controls.Add(this.lblSessionReview);
 
-            this.unitSelector.Location = new Point(10, 324);
+            this.unitSelector.Location = new Point(10, 372);
             this.unitSelector.Size = new Size(690, 45);
             this.unitSelector.Text = "Units";
             this.unitSelector.Visible = false;
@@ -272,7 +288,7 @@ namespace WiiBalanceScale
             this.btnReset.Text = "Zero";
             this.btnReset.UseVisualStyleBackColor = true;
 
-            grpSensors.Location = new Point(10, 374);
+            grpSensors.Location = new Point(10, 422);
             grpSensors.Size = new Size(350, 220);
             grpSensors.Text = "Corner load (kg)";
 
@@ -297,7 +313,7 @@ namespace WiiBalanceScale
             grpSensors.Controls.Add(this.lblBottomLeft);
             grpSensors.Controls.Add(this.lblBottomRight);
 
-            grpBalance.Location = new Point(370, 374);
+            grpBalance.Location = new Point(370, 422);
             grpBalance.Size = new Size(330, 220);
             grpBalance.Text = "Balance";
 
@@ -331,6 +347,59 @@ namespace WiiBalanceScale
             grpPressurePoint.Controls.Add(this.pnlCenterOfPressure);
             grpPressurePoint.Controls.Add(lblPressureHelp);
 
+            grpTrends.Location = new Point(10, 646);
+            grpTrends.Size = new Size(1020, 106);
+            grpTrends.Text = "Session trends (selected profile)";
+
+            Label lblWeightTrend = new Label();
+            lblWeightTrend.Location = new Point(10, 20);
+            lblWeightTrend.Size = new Size(240, 16);
+            lblWeightTrend.Text = "Weight trend";
+
+            this.pnlWeightTrend.Location = new Point(10, 38);
+            this.pnlWeightTrend.Size = new Size(240, 58);
+            this.pnlWeightTrend.BorderStyle = BorderStyle.FixedSingle;
+            this.pnlWeightTrend.BackColor = Color.White;
+
+            Label lblLeftRightTrend = new Label();
+            lblLeftRightTrend.Location = new Point(264, 20);
+            lblLeftRightTrend.Size = new Size(240, 16);
+            lblLeftRightTrend.Text = "Left/Right balance trend";
+
+            this.pnlLeftRightTrend.Location = new Point(264, 38);
+            this.pnlLeftRightTrend.Size = new Size(240, 58);
+            this.pnlLeftRightTrend.BorderStyle = BorderStyle.FixedSingle;
+            this.pnlLeftRightTrend.BackColor = Color.White;
+
+            Label lblFrontBackTrend = new Label();
+            lblFrontBackTrend.Location = new Point(518, 20);
+            lblFrontBackTrend.Size = new Size(240, 16);
+            lblFrontBackTrend.Text = "Front/Back balance trend";
+
+            this.pnlFrontBackTrend.Location = new Point(518, 38);
+            this.pnlFrontBackTrend.Size = new Size(240, 58);
+            this.pnlFrontBackTrend.BorderStyle = BorderStyle.FixedSingle;
+            this.pnlFrontBackTrend.BackColor = Color.White;
+
+            Label lblStabilityTrend = new Label();
+            lblStabilityTrend.Location = new Point(772, 20);
+            lblStabilityTrend.Size = new Size(240, 16);
+            lblStabilityTrend.Text = "Stability trend";
+
+            this.pnlStabilityTrend.Location = new Point(772, 38);
+            this.pnlStabilityTrend.Size = new Size(240, 58);
+            this.pnlStabilityTrend.BorderStyle = BorderStyle.FixedSingle;
+            this.pnlStabilityTrend.BackColor = Color.White;
+
+            grpTrends.Controls.Add(lblWeightTrend);
+            grpTrends.Controls.Add(this.pnlWeightTrend);
+            grpTrends.Controls.Add(lblLeftRightTrend);
+            grpTrends.Controls.Add(this.pnlLeftRightTrend);
+            grpTrends.Controls.Add(lblFrontBackTrend);
+            grpTrends.Controls.Add(this.pnlFrontBackTrend);
+            grpTrends.Controls.Add(lblStabilityTrend);
+            grpTrends.Controls.Add(this.pnlStabilityTrend);
+
             this.Controls.Add(grpWeight);
             this.Controls.Add(this.unitSelector);
             this.Controls.Add(grpProfiles);
@@ -338,6 +407,7 @@ namespace WiiBalanceScale
             this.Controls.Add(grpSensors);
             this.Controls.Add(grpBalance);
             this.Controls.Add(grpPressurePoint);
+            this.Controls.Add(grpTrends);
 
             this.ResumeLayout(false);
         }
