@@ -61,6 +61,7 @@ namespace WiiBalanceScale
         {
             public DateTime TimestampUtc;
             public string ProfileName;
+            public float ProfileHeightCm;
             public float TotalWeightKg;
             public float SensorTopLeftKg;
             public float SensorTopRightKg;
@@ -70,9 +71,15 @@ namespace WiiBalanceScale
             public float RightPercent;
             public float FrontPercent;
             public float BackPercent;
-            public float CenterX;
-            public float CenterY;
-            public int QualityLevel;
+            public float PressurePointX;
+            public float PressurePointY;
+            public int StabilityLevel;
+        }
+
+        class ProfileInfo
+        {
+            public string Name;
+            public float HeightCm;
         }
 
         static bool CanShowUnicode = GetCanShowUnicode();
@@ -93,12 +100,15 @@ namespace WiiBalanceScale
 
         static readonly List<MeasurementSample> SessionMeasurements = new List<MeasurementSample>();
         static readonly List<SensorSample> DiagnosticsWindow = new List<SensorSample>();
-        static readonly List<string> Profiles = new List<string>();
+        static readonly List<ProfileInfo> Profiles = new List<ProfileInfo>();
 
         static DateTime LastSessionRecordUtc = DateTime.MinValue;
-        static int LastQualityLevel = 0;
-        static PointF LastCenterOfPressure = new PointF(0.0f, 0.0f);
+        static int LastStabilityLevel = 0;
+        static PointF LastPressurePoint = new PointF(0.0f, 0.0f);
         static float LastDisplayedWeightKg = 0.0f;
+        static float LastLeftPercent = 50.0f;
+        static float LastFrontPercent = 50.0f;
+        static string LastHardwareSignal = "";
 
         static bool HasCalibration = false;
         static float CalibrationTopLeftOffset = 0.0f;
@@ -106,8 +116,9 @@ namespace WiiBalanceScale
         static float CalibrationBottomLeftOffset = 0.0f;
         static float CalibrationBottomRightOffset = 0.0f;
 
-        static readonly string ProfilesPath = Path.Combine(Application.StartupPath, "profiles.txt");
-        static readonly string CsvHeader = "timestamp_utc,profile,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,center_x,center_y,quality_level";
+        static readonly string ProfilesPath = Path.Combine(Application.StartupPath, "profiles.csv");
+        static readonly string LegacyProfilesPath = Path.Combine(Application.StartupPath, "profiles.txt");
+        static readonly string CsvHeader = "timestamp_utc,profile,profile_height_cm,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,pressure_point_x,pressure_point_y,stability_level";
 
         static bool GetCanShowUnicode()
         {
@@ -124,10 +135,7 @@ namespace WiiBalanceScale
             f.lblWeight.Text = "";
             f.lblUnit.Text = "";
             f.lblQuality.Text = "";
-            if (CanShowUnicode)
-            {
-                f.lblQuality.Font = new Font("Segoe UI Symbol", 48F, FontStyle.Regular, GraphicsUnit.Pixel);
-            }
+            if (CanShowUnicode) f.lblQuality.Font = new Font("Segoe UI Symbol", 42F, FontStyle.Regular, GraphicsUnit.Pixel);
 
             LoadProfiles();
             BindProfilesToUi();
@@ -185,37 +193,87 @@ namespace WiiBalanceScale
                 string[] lines = File.ReadAllLines(ProfilesPath);
                 for (int i = 0; i < lines.Length; i++)
                 {
-                    string name = (lines[i] == null ? "" : lines[i].Trim());
-                    if (name.Length == 0 || Profiles.Contains(name)) continue;
-                    Profiles.Add(name);
+                    if (lines[i] == null) continue;
+                    string line = lines[i].Trim();
+                    if (line.Length == 0) continue;
+                    string[] parts = line.Split(',');
+                    string name = parts[0].Trim();
+                    if (name.Length == 0 || FindProfileByName(name) != null) continue;
+                    float height = 0.0f;
+                    if (parts.Length > 1)
+                        float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out height);
+                    Profiles.Add(new ProfileInfo() { Name = name, HeightCm = height });
                 }
             }
-            if (!Profiles.Contains("Default")) Profiles.Insert(0, "Default");
-            if (Profiles.Count == 0) Profiles.Add("Default");
+            else if (File.Exists(LegacyProfilesPath))
+            {
+                string[] lines = File.ReadAllLines(LegacyProfilesPath);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string name = (lines[i] == null ? "" : lines[i].Trim());
+                    if (name.Length == 0 || FindProfileByName(name) != null) continue;
+                    Profiles.Add(new ProfileInfo() { Name = name, HeightCm = 0.0f });
+                }
+            }
+
+            if (FindProfileByName("Default") == null)
+                Profiles.Insert(0, new ProfileInfo() { Name = "Default", HeightCm = 0.0f });
+            if (Profiles.Count == 0)
+                Profiles.Add(new ProfileInfo() { Name = "Default", HeightCm = 0.0f });
         }
 
         static void SaveProfiles()
         {
-            try { File.WriteAllLines(ProfilesPath, Profiles.ToArray()); }
+            try
+            {
+                string[] lines = new string[Profiles.Count];
+                for (int i = 0; i < Profiles.Count; i++)
+                {
+                    ProfileInfo p = Profiles[i];
+                    lines[i] = p.Name + "," + p.HeightCm.ToString("0.0", CultureInfo.InvariantCulture);
+                }
+                File.WriteAllLines(ProfilesPath, lines);
+            }
             catch (Exception ex)
             {
                 MessageBox.Show(f, "Could not save profiles.\n\n" + ex.Message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
+        static ProfileInfo FindProfileByName(string name)
+        {
+            for (int i = 0; i < Profiles.Count; i++)
+            {
+                if (string.Equals(Profiles[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                    return Profiles[i];
+            }
+            return null;
+        }
+
         static void BindProfilesToUi()
         {
             f.cmbProfiles.Items.Clear();
             for (int i = 0; i < Profiles.Count; i++)
-                f.cmbProfiles.Items.Add(Profiles[i]);
+                f.cmbProfiles.Items.Add(Profiles[i].Name);
             if (f.cmbProfiles.Items.Count > 0)
                 f.cmbProfiles.SelectedIndex = 0;
+            ApplyProfileToInputs();
         }
 
-        static string GetSelectedProfile()
+        static ProfileInfo GetSelectedProfile()
         {
-            if (f.cmbProfiles.SelectedItem == null) return "Default";
-            return f.cmbProfiles.SelectedItem.ToString();
+            if (f.cmbProfiles.SelectedItem == null) return FindProfileByName("Default");
+            ProfileInfo selected = FindProfileByName(f.cmbProfiles.SelectedItem.ToString());
+            if (selected != null) return selected;
+            return FindProfileByName("Default");
+        }
+
+        static void ApplyProfileToInputs()
+        {
+            ProfileInfo p = GetSelectedProfile();
+            if (p == null) return;
+            f.txtProfileName.Text = p.Name;
+            f.txtProfileHeightCm.Text = (p.HeightCm > 0.0f ? p.HeightCm.ToString("0.0", CultureInfo.InvariantCulture) : "");
         }
 
         static void SetConnectionError(EConnectionError error, string detail)
@@ -343,6 +401,7 @@ namespace WiiBalanceScale
                 {
                     f.lblWeight.Text = "WAIT...";
                     f.lblQuality.Text = (f.lblQuality.Text.Length >= 5 ? "" : f.lblQuality.Text) + CharHourglass;
+                    f.lblAdvice.Text = "Advice: Waiting for board connection...";
                     return;
                 }
 
@@ -367,7 +426,7 @@ namespace WiiBalanceScale
                         SetConnectionError(EConnectionError.NoBluetoothAdapter, "Connection manager reported a bluetooth error without a specific cause.");
 
                     BoardTimer.Stop();
-                    System.Windows.Forms.MessageBox.Show(f, GetConnectionErrorMessage(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(f, GetConnectionErrorMessage(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Shutdown();
                     return;
                 }
@@ -383,7 +442,7 @@ namespace WiiBalanceScale
                         SetConnectionError(EConnectionError.NoDeviceFound, "Bluetooth scan timed out without finding a Wii Balance Board.");
 
                     BoardTimer.Stop();
-                    System.Windows.Forms.MessageBox.Show(f, GetConnectionErrorMessage(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(f, GetConnectionErrorMessage(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Shutdown();
                     return;
                 }
@@ -404,11 +463,11 @@ namespace WiiBalanceScale
             for (HistoryBest = 0; HistoryBest < History.Length; HistoryBest++)
             {
                 float HistoryEntry = History[(HistoryCursor + History.Length - HistoryBest) % History.Length];
-                if (System.Math.Abs(MaxHist - HistoryEntry) > 1.0f) break;
-                if (System.Math.Abs(MinHist - HistoryEntry) > 1.0f) break;
+                if (Math.Abs(MaxHist - HistoryEntry) > 1.0f) break;
+                if (Math.Abs(MinHist - HistoryEntry) > 1.0f) break;
                 if (HistoryEntry > MaxHist) MaxHist = HistoryEntry;
                 if (HistoryEntry < MinHist) MinHist = HistoryEntry;
-                float Diff = System.Math.Max(System.Math.Abs(HistoryEntry - kg), System.Math.Abs((HistorySum + HistoryEntry) / (HistoryBest + 1) - kg));
+                float Diff = Math.Max(Math.Abs(HistoryEntry - kg), Math.Abs((HistorySum + HistoryEntry) / (HistoryBest + 1) - kg));
                 if (Diff > MaxDiff) MaxDiff = Diff;
                 if (Diff > 1.0f) break;
                 HistorySum += HistoryEntry;
@@ -419,7 +478,7 @@ namespace WiiBalanceScale
             LastDisplayedWeightKg = kg;
 
             float accuracy = 1.0f / HistoryBest;
-            float weight = (float)System.Math.Floor(kg / accuracy + 0.5f) * accuracy;
+            float weight = (float)Math.Floor(kg / accuracy + 0.5f) * accuracy;
 
             if (SelectedUnit != EUnit.Kg) weight *= 2.20462262f;
             if (SelectedUnit == EUnit.Stone)
@@ -435,12 +494,14 @@ namespace WiiBalanceScale
                 f.lblUnit.Text = (SelectedUnit != EUnit.Kg ? "lbs" : "kg");
             }
 
-            LastQualityLevel = ((HistoryBest + 5) / (History.Length / 5));
+            LastStabilityLevel = ((HistoryBest + 5) / (History.Length / 5));
             f.lblQuality.Text = "";
             for (int i = 0; i < 5; i++)
-                f.lblQuality.Text += (i < LastQualityLevel ? CharFilledStar : CharHollowCircle);
+                f.lblQuality.Text += (i < LastStabilityLevel ? CharFilledStar : CharHollowCircle);
 
             UpdateLiveSensorUi();
+            UpdateWeightVsHeightIndicator();
+            UpdateAdviceMessage();
             MaybeRecordSession();
             UpdateHistorySummary();
             f.pnlCenterOfPressure.Invalidate();
@@ -470,23 +531,85 @@ namespace WiiBalanceScale
             float rightPct = 100.0f - leftPct;
             float frontPct = total <= 0.0001f ? 50.0f : (front / total * 100.0f);
             float backPct = 100.0f - frontPct;
+            LastLeftPercent = leftPct;
+            LastFrontPercent = frontPct;
 
-            float copX = total <= 0.0001f ? 0.0f : ((right - left) / total);
-            float copY = total <= 0.0001f ? 0.0f : ((front - back) / total);
-            LastCenterOfPressure = new PointF(copX, copY);
+            float pressureX = total <= 0.0001f ? 0.0f : ((right - left) / total);
+            float pressureY = total <= 0.0001f ? 0.0f : ((front - back) / total);
+            LastPressurePoint = new PointF(pressureX, pressureY);
 
-            f.lblTopLeft.Text = "Top Left: " + tl.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
-            f.lblTopRight.Text = "Top Right: " + tr.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
-            f.lblBottomLeft.Text = "Bottom Left: " + bl.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
-            f.lblBottomRight.Text = "Bottom Right: " + br.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
-            f.lblLeftRight.Text = "Left/Right: " + leftPct.ToString("0.0", CultureInfo.InvariantCulture) + "% / " + rightPct.ToString("0.0", CultureInfo.InvariantCulture) + "%";
-            f.lblFrontBack.Text = "Front/Back: " + frontPct.ToString("0.0", CultureInfo.InvariantCulture) + "% / " + backPct.ToString("0.0", CultureInfo.InvariantCulture) + "%";
+            f.lblTopLeft.Text = "Top left: " + tl.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
+            f.lblTopRight.Text = "Top right: " + tr.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
+            f.lblBottomLeft.Text = "Bottom left: " + bl.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
+            f.lblBottomRight.Text = "Bottom right: " + br.ToString("0.00", CultureInfo.InvariantCulture) + " kg";
+            f.lblLeftRight.Text = "Left / Right balance: " + leftPct.ToString("0.0", CultureInfo.InvariantCulture) + "% / " + rightPct.ToString("0.0", CultureInfo.InvariantCulture) + "%";
+            f.lblFrontBack.Text = "Front / Back balance: " + frontPct.ToString("0.0", CultureInfo.InvariantCulture) + "% / " + backPct.ToString("0.0", CultureInfo.InvariantCulture) + "%";
 
             if (DiagnosticsWindow.Count >= 80)
                 DiagnosticsWindow.RemoveAt(0);
             DiagnosticsWindow.Add(new SensorSample() { TopLeft = tl, TopRight = tr, BottomLeft = bl, BottomRight = br, Total = total });
 
-            UpdateDiagnosticsPanel();
+            UpdateHardwareCheckPanel();
+        }
+
+        static void UpdateWeightVsHeightIndicator()
+        {
+            ProfileInfo profile = GetSelectedProfile();
+            if (profile == null || profile.HeightCm <= 0.0f)
+            {
+                f.lblWeightVsHeight.Text = "Weight vs height: add profile height to view this indicator.";
+                return;
+            }
+
+            float heightM = profile.HeightCm / 100.0f;
+            if (heightM <= 0.1f)
+            {
+                f.lblWeightVsHeight.Text = "Weight vs height: height is too low to calculate.";
+                return;
+            }
+
+            float indicator = LastDisplayedWeightKg / (heightM * heightM);
+            string band;
+            if (indicator < 18.5f) band = "below the typical range";
+            else if (indicator < 25.0f) band = "in the typical range";
+            else if (indicator < 30.0f) band = "above the typical range";
+            else band = "well above the typical range";
+
+            f.lblWeightVsHeight.Text = "Weight vs height: " + band + " (simple indicator, not a diagnosis).";
+        }
+
+        static void UpdateAdviceMessage()
+        {
+            string advice;
+            if (!string.IsNullOrEmpty(LastHardwareSignal))
+            {
+                advice = "Advice: A sensor corner may need inspection.";
+            }
+            else if (LastStabilityLevel <= 2)
+            {
+                advice = "Advice: Stand still a little longer.";
+            }
+            else if (LastLeftPercent < 45.0f)
+            {
+                advice = "Advice: Your weight is slightly shifted to the right.";
+            }
+            else if (LastLeftPercent > 55.0f)
+            {
+                advice = "Advice: Your weight is slightly shifted to the left.";
+            }
+            else if (LastFrontPercent < 45.0f)
+            {
+                advice = "Advice: Your weight is slightly backward.";
+            }
+            else if (LastFrontPercent > 55.0f)
+            {
+                advice = "Advice: Your weight is slightly forward.";
+            }
+            else
+            {
+                advice = "Advice: Measurement is stable.";
+            }
+            f.lblAdvice.Text = advice;
         }
 
         static void MaybeRecordSession()
@@ -512,13 +635,15 @@ namespace WiiBalanceScale
             float rightPct = 100.0f - leftPct;
             float frontPct = total <= 0.0001f ? 50.0f : (front / total * 100.0f);
             float backPct = 100.0f - frontPct;
-            float copX = total <= 0.0001f ? 0.0f : ((tr + br) - (tl + bl)) / total;
-            float copY = total <= 0.0001f ? 0.0f : ((tl + tr) - (bl + br)) / total;
+            float pressureX = total <= 0.0001f ? 0.0f : ((tr + br) - (tl + bl)) / total;
+            float pressureY = total <= 0.0001f ? 0.0f : ((tl + tr) - (bl + br)) / total;
 
+            ProfileInfo profile = GetSelectedProfile();
             SessionMeasurements.Add(new MeasurementSample()
             {
                 TimestampUtc = now,
-                ProfileName = GetSelectedProfile(),
+                ProfileName = (profile == null ? "Default" : profile.Name),
+                ProfileHeightCm = (profile == null ? 0.0f : profile.HeightCm),
                 TotalWeightKg = LastDisplayedWeightKg,
                 SensorTopLeftKg = tl,
                 SensorTopRightKg = tr,
@@ -528,9 +653,9 @@ namespace WiiBalanceScale
                 RightPercent = rightPct,
                 FrontPercent = frontPct,
                 BackPercent = backPct,
-                CenterX = copX,
-                CenterY = copY,
-                QualityLevel = LastQualityLevel
+                PressurePointX = pressureX,
+                PressurePointY = pressureY,
+                StabilityLevel = LastStabilityLevel
             });
 
             if (SessionMeasurements.Count > 2000)
@@ -552,8 +677,7 @@ namespace WiiBalanceScale
             float min = SessionMeasurements[begin].TotalWeightKg;
             float max = min;
             float sum = 0.0f;
-            int i;
-            for (i = begin; i < count; i++)
+            for (int i = begin; i < count; i++)
             {
                 float w = SessionMeasurements[i].TotalWeightKg;
                 if (w < min) min = w;
@@ -562,24 +686,30 @@ namespace WiiBalanceScale
             }
             float avg = sum / (count - begin);
 
-            f.lblHistorySummary.Text = "Samples: " + count.ToString() + "   Profile: " + GetSelectedProfile() +
-                "   Recent Avg: " + avg.ToString("0.000", CultureInfo.InvariantCulture) + " kg" +
+            ProfileInfo profile = GetSelectedProfile();
+            string profileDesc = (profile == null ? "Default" : profile.Name);
+            if (profile != null && profile.HeightCm > 0.0f)
+                profileDesc += " (" + profile.HeightCm.ToString("0.0", CultureInfo.InvariantCulture) + " cm)";
+
+            f.lblHistorySummary.Text = "Samples: " + count.ToString() + "   Profile: " + profileDesc +
+                "   Recent avg: " + avg.ToString("0.000", CultureInfo.InvariantCulture) + " kg" +
                 "   Range: " + min.ToString("0.000", CultureInfo.InvariantCulture) + " .. " + max.ToString("0.000", CultureInfo.InvariantCulture) + " kg";
         }
 
-        static void UpdateDiagnosticsPanel()
+        static void UpdateHardwareCheckPanel()
         {
+            LastHardwareSignal = "";
             if (!f.chkHardwareTest.Checked)
             {
-                f.lblDiagnosticsStatus.Text = "Status: Hardware test mode is off";
-                f.lblDiagnosticsDetails.Text = "Enable hardware test mode to inspect corner activity and unloaded drift.";
+                f.lblDiagnosticsStatus.Text = "Hardware status: check mode is off";
+                f.lblDiagnosticsDetails.Text = "Enable check mode to inspect corners and idle drift.";
                 return;
             }
 
             if (DiagnosticsWindow.Count < 10)
             {
-                f.lblDiagnosticsStatus.Text = "Status: Gathering baseline...";
-                f.lblDiagnosticsDetails.Text = "Collecting enough sensor data for diagnostics.";
+                f.lblDiagnosticsStatus.Text = "Hardware status: collecting baseline";
+                f.lblDiagnosticsDetails.Text = "Need a little more sensor data.";
                 return;
             }
 
@@ -605,37 +735,33 @@ namespace WiiBalanceScale
             float trAvg = trSum / sampleCount;
             float blAvg = blSum / sampleCount;
             float brAvg = brSum / sampleCount;
+            float allAvg = (tlAvg + trAvg + blAvg + brAvg) / 4.0f;
 
             List<string> issues = new List<string>();
             if (totalAvg > 10.0f)
             {
-                float allAvg = (tlAvg + trAvg + blAvg + brAvg) / 4.0f;
-                if (tlAvg < allAvg * 0.35f) issues.Add("Top-left appears weak");
-                if (trAvg < allAvg * 0.35f) issues.Add("Top-right appears weak");
-                if (blAvg < allAvg * 0.35f) issues.Add("Bottom-left appears weak");
-                if (brAvg < allAvg * 0.35f) issues.Add("Bottom-right appears weak");
-
-                if (tlAvg < 0.2f) issues.Add("Top-left appears inactive");
-                if (trAvg < 0.2f) issues.Add("Top-right appears inactive");
-                if (blAvg < 0.2f) issues.Add("Bottom-left appears inactive");
-                if (brAvg < 0.2f) issues.Add("Bottom-right appears inactive");
+                if (tlAvg < allAvg * 0.35f) issues.Add("Top-left may be weak");
+                if (trAvg < allAvg * 0.35f) issues.Add("Top-right may be weak");
+                if (blAvg < allAvg * 0.35f) issues.Add("Bottom-left may be weak");
+                if (brAvg < allAvg * 0.35f) issues.Add("Bottom-right may be weak");
             }
             else
             {
-                if ((tlMax - tlMin) > 0.7f) issues.Add("Top-left idle drift");
-                if ((trMax - trMin) > 0.7f) issues.Add("Top-right idle drift");
-                if ((blMax - blMin) > 0.7f) issues.Add("Bottom-left idle drift");
-                if ((brMax - brMin) > 0.7f) issues.Add("Bottom-right idle drift");
+                if ((tlMax - tlMin) > 0.7f) issues.Add("Top-left drift while unloaded");
+                if ((trMax - trMin) > 0.7f) issues.Add("Top-right drift while unloaded");
+                if ((blMax - blMin) > 0.7f) issues.Add("Bottom-left drift while unloaded");
+                if ((brMax - brMin) > 0.7f) issues.Add("Bottom-right drift while unloaded");
             }
 
             if (issues.Count == 0)
             {
-                f.lblDiagnosticsStatus.Text = "Status: Sensors look plausible";
-                f.lblDiagnosticsDetails.Text = "No obvious weak, inactive, or drifting corners detected with current heuristic checks.";
+                f.lblDiagnosticsStatus.Text = "Hardware status: looks okay";
+                f.lblDiagnosticsDetails.Text = "No obvious corner issue detected by basic checks.";
             }
             else
             {
-                f.lblDiagnosticsStatus.Text = "Status: Review suggested";
+                LastHardwareSignal = "needs inspection";
+                f.lblDiagnosticsStatus.Text = "Hardware status: please inspect";
                 string joined = "";
                 for (int i = 0; i < issues.Count; i++)
                 {
@@ -649,10 +775,10 @@ namespace WiiBalanceScale
         static void btnReset_Click(object sender, EventArgs e)
         {
             if (HistoryBest <= 0) return;
-            float HistorySum = 0.0f;
+            float historySum = 0.0f;
             for (int i = 0; i < HistoryBest; i++)
-                HistorySum += History[(HistoryCursor + History.Length - i) % History.Length];
-            ZeroedWeight = HistorySum / HistoryBest;
+                historySum += History[(HistoryCursor + History.Length - i) % History.Length];
+            ZeroedWeight = historySum / HistoryBest;
         }
 
         static void unitRadioButton_ChangeHandler(object sender, EventArgs e)
@@ -666,7 +792,9 @@ namespace WiiBalanceScale
 
         static void cmbProfiles_SelectedIndexChanged(object sender, EventArgs e)
         {
+            ApplyProfileToInputs();
             UpdateHistorySummary();
+            UpdateWeightVsHeightIndicator();
         }
 
         static void btnAddProfile_Click(object sender, EventArgs e)
@@ -674,20 +802,42 @@ namespace WiiBalanceScale
             string name = (f.txtProfileName.Text == null ? "" : f.txtProfileName.Text.Trim());
             if (name.Length == 0)
             {
-                MessageBox.Show(f, "Enter a profile name first.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(f, "Enter a profile name.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (Profiles.Contains(name))
+            if (name.IndexOf(',') >= 0)
             {
-                f.cmbProfiles.SelectedItem = name;
-                f.txtProfileName.Text = "";
+                MessageBox.Show(f, "Profile name cannot contain commas.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            Profiles.Add(name);
+
+            float heightCm;
+            if (!float.TryParse((f.txtProfileHeightCm.Text == null ? "" : f.txtProfileHeightCm.Text.Trim()), NumberStyles.Float, CultureInfo.InvariantCulture, out heightCm))
+            {
+                MessageBox.Show(f, "Enter a numeric height in centimeters.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (heightCm < 80.0f || heightCm > 250.0f)
+            {
+                MessageBox.Show(f, "Height should be between 80 and 250 cm.", "Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            ProfileInfo existing = FindProfileByName(name);
+            if (existing == null)
+            {
+                Profiles.Add(new ProfileInfo() { Name = name, HeightCm = heightCm });
+                f.cmbProfiles.Items.Add(name);
+            }
+            else
+            {
+                existing.HeightCm = heightCm;
+            }
+
             SaveProfiles();
-            BindProfilesToUi();
             f.cmbProfiles.SelectedItem = name;
-            f.txtProfileName.Text = "";
+            ApplyProfileToInputs();
+            UpdateWeightVsHeightIndicator();
         }
 
         static void btnClearSession_Click(object sender, EventArgs e)
@@ -748,7 +898,8 @@ namespace WiiBalanceScale
 
         static string BuildExportFileName(string extension)
         {
-            string safeProfile = GetSelectedProfile().Replace(' ', '_');
+            ProfileInfo p = GetSelectedProfile();
+            string safeProfile = (p == null ? "default" : p.Name).Replace(' ', '_');
             string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
             return safeProfile + "_session_" + stamp + "." + extension;
         }
@@ -770,6 +921,7 @@ namespace WiiBalanceScale
                 MeasurementSample s = SessionMeasurements[i];
                 sb.Append(s.TimestampUtc.ToString("o", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(CsvEscape(s.ProfileName)); sb.Append(',');
+                sb.Append(s.ProfileHeightCm.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.TotalWeightKg.ToString("0.000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.SensorTopLeftKg.ToString("0.000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.SensorTopRightKg.ToString("0.000", CultureInfo.InvariantCulture)); sb.Append(',');
@@ -779,9 +931,9 @@ namespace WiiBalanceScale
                 sb.Append(s.RightPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.FrontPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.BackPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
-                sb.Append(s.CenterX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
-                sb.Append(s.CenterY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
-                sb.Append(s.QualityLevel.ToString(CultureInfo.InvariantCulture));
+                sb.Append(s.PressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(s.PressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(s.StabilityLevel.ToString(CultureInfo.InvariantCulture));
                 sb.AppendLine();
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
@@ -796,8 +948,10 @@ namespace WiiBalanceScale
         static void ExportJson(string path)
         {
             StringBuilder sb = new StringBuilder();
+            ProfileInfo profile = GetSelectedProfile();
             sb.AppendLine("{");
-            sb.Append("  \"profile\": \"").Append(JsonEscape(GetSelectedProfile())).AppendLine("\",");
+            sb.Append("  \"profile\": \"").Append(JsonEscape(profile == null ? "Default" : profile.Name)).AppendLine("\",");
+            sb.Append("  \"profile_height_cm\": ").Append(profile == null ? "0.0" : profile.HeightCm.ToString("0.0", CultureInfo.InvariantCulture)).AppendLine(",");
             sb.Append("  \"exported_at_utc\": \"").Append(DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)).AppendLine("\",");
             sb.AppendLine("  \"samples\": [");
             for (int i = 0; i < SessionMeasurements.Count; i++)
@@ -806,6 +960,7 @@ namespace WiiBalanceScale
                 sb.AppendLine("    {");
                 sb.Append("      \"timestamp_utc\": \"").Append(s.TimestampUtc.ToString("o", CultureInfo.InvariantCulture)).AppendLine("\",");
                 sb.Append("      \"profile\": \"").Append(JsonEscape(s.ProfileName)).AppendLine("\",");
+                sb.Append("      \"profile_height_cm\": ").Append(s.ProfileHeightCm.ToString("0.0", CultureInfo.InvariantCulture)).AppendLine(",");
                 sb.Append("      \"total_weight_kg\": ").Append(s.TotalWeightKg.ToString("0.000", CultureInfo.InvariantCulture)).AppendLine(",");
                 sb.Append("      \"sensor_top_left_kg\": ").Append(s.SensorTopLeftKg.ToString("0.000", CultureInfo.InvariantCulture)).AppendLine(",");
                 sb.Append("      \"sensor_top_right_kg\": ").Append(s.SensorTopRightKg.ToString("0.000", CultureInfo.InvariantCulture)).AppendLine(",");
@@ -815,9 +970,9 @@ namespace WiiBalanceScale
                 sb.Append("      \"right_percent\": ").Append(s.RightPercent.ToString("0.00", CultureInfo.InvariantCulture)).AppendLine(",");
                 sb.Append("      \"front_percent\": ").Append(s.FrontPercent.ToString("0.00", CultureInfo.InvariantCulture)).AppendLine(",");
                 sb.Append("      \"back_percent\": ").Append(s.BackPercent.ToString("0.00", CultureInfo.InvariantCulture)).AppendLine(",");
-                sb.Append("      \"center_x\": ").Append(s.CenterX.ToString("0.0000", CultureInfo.InvariantCulture)).AppendLine(",");
-                sb.Append("      \"center_y\": ").Append(s.CenterY.ToString("0.0000", CultureInfo.InvariantCulture)).AppendLine(",");
-                sb.Append("      \"quality_level\": ").Append(s.QualityLevel.ToString(CultureInfo.InvariantCulture)).AppendLine();
+                sb.Append("      \"pressure_point_x\": ").Append(s.PressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)).AppendLine(",");
+                sb.Append("      \"pressure_point_y\": ").Append(s.PressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)).AppendLine(",");
+                sb.Append("      \"stability_level\": ").Append(s.StabilityLevel.ToString(CultureInfo.InvariantCulture)).AppendLine();
                 sb.Append("    }");
                 if (i < SessionMeasurements.Count - 1) sb.Append(',');
                 sb.AppendLine();
@@ -859,12 +1014,13 @@ namespace WiiBalanceScale
             CalibrationBottomLeftOffset = bl / DiagnosticsWindow.Count;
             CalibrationBottomRightOffset = br / DiagnosticsWindow.Count;
             HasCalibration = true;
-            f.lblCalibrationStatus.Text = "Offsets captured. Sensor values now subtract unloaded baseline.";
+            f.lblCalibrationStatus.Text = "Zero offsets captured and applied to corner load values.";
         }
 
         static void chkHardwareTest_CheckedChanged(object sender, EventArgs e)
         {
-            UpdateDiagnosticsPanel();
+            UpdateHardwareCheckPanel();
+            UpdateAdviceMessage();
         }
 
         static void pnlCenterOfPressure_Paint(object sender, PaintEventArgs e)
@@ -881,8 +1037,8 @@ namespace WiiBalanceScale
                 e.Graphics.DrawLine(axisPen, cx, 0, cx, rc.Height);
                 e.Graphics.DrawLine(axisPen, 0, cy, rc.Width, cy);
 
-                float px = cx + LastCenterOfPressure.X * (rc.Width * 0.45f);
-                float py = cy - LastCenterOfPressure.Y * (rc.Height * 0.45f);
+                float px = cx + LastPressurePoint.X * (rc.Width * 0.45f);
+                float py = cy - LastPressurePoint.Y * (rc.Height * 0.45f);
                 float r = 6.0f;
                 e.Graphics.FillEllipse(dotBrush, px - r, py - r, r * 2.0f, r * 2.0f);
             }
@@ -895,7 +1051,7 @@ namespace WiiBalanceScale
             if (SessionMeasurements.Count < 2)
             {
                 using (Brush textBrush = new SolidBrush(Color.Gray))
-                    e.Graphics.DrawString("History graph appears after more samples.", SystemFonts.DefaultFont, textBrush, 8, 8);
+                    e.Graphics.DrawString("Trend appears after more samples.", SystemFonts.DefaultFont, textBrush, 8, 8);
                 return;
             }
 
@@ -903,8 +1059,7 @@ namespace WiiBalanceScale
             int start = Math.Max(0, count - rc.Width);
             float min = SessionMeasurements[start].TotalWeightKg;
             float max = min;
-            int i;
-            for (i = start; i < count; i++)
+            for (int i = start; i < count; i++)
             {
                 float w = SessionMeasurements[i].TotalWeightKg;
                 if (w < min) min = w;
@@ -921,7 +1076,7 @@ namespace WiiBalanceScale
                 e.Graphics.DrawLine(axisPen, 0, rc.Height / 2, rc.Width, rc.Height / 2);
 
                 PointF[] points = new PointF[count - start];
-                for (i = start; i < count; i++)
+                for (int i = start; i < count; i++)
                 {
                     float x = (float)(i - start);
                     float n = (SessionMeasurements[i].TotalWeightKg - min) / span;
