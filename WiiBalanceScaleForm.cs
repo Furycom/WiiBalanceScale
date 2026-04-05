@@ -48,6 +48,7 @@ namespace WiiBalanceScale
         internal Label lblSessionSummary;
         internal Label lblSessionComparison;
         internal Label lblTrendHighlights;
+        internal Label lblPatternSummary;
         internal Label lblSessionReview;
         internal Panel pnlWeightTrend;
         internal Panel pnlLeftRightTrend;
@@ -96,6 +97,7 @@ namespace WiiBalanceScale
             this.lblSessionSummary = new Label();
             this.lblSessionComparison = new Label();
             this.lblTrendHighlights = new Label();
+            this.lblPatternSummary = new Label();
             this.lblSessionReview = new Label();
             this.pnlWeightTrend = new Panel();
             this.pnlLeftRightTrend = new Panel();
@@ -194,8 +196,12 @@ namespace WiiBalanceScale
             this.lblTrendHighlights.Size = new Size(670, 18);
             this.lblTrendHighlights.Text = "Recent trend: not enough history yet.";
 
-            this.lblSessionReview.Location = new Point(12, 306);
-            this.lblSessionReview.Size = new Size(670, 46);
+            this.lblPatternSummary.Location = new Point(12, 306);
+            this.lblPatternSummary.Size = new Size(670, 18);
+            this.lblPatternSummary.Text = "Repeated pattern: not enough strong history yet.";
+
+            this.lblSessionReview.Location = new Point(12, 326);
+            this.lblSessionReview.Size = new Size(670, 26);
             this.lblSessionReview.Text = "Session review: waiting for enough samples...";
 
             grpWeight.Controls.Add(this.lblWeight);
@@ -209,6 +215,7 @@ namespace WiiBalanceScale
             grpWeight.Controls.Add(this.lblSessionSummary);
             grpWeight.Controls.Add(this.lblSessionComparison);
             grpWeight.Controls.Add(this.lblTrendHighlights);
+            grpWeight.Controls.Add(this.lblPatternSummary);
             grpWeight.Controls.Add(this.lblSessionReview);
 
             this.unitSelector.Location = new Point(10, 372);
