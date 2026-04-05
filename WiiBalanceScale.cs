@@ -904,7 +904,7 @@ namespace WiiBalanceScale
 
             BuildComparisonAndAdvice(insight);
             insight.SummaryText = "Session summary: " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", " + insight.StabilityBandText + ", stabilized in " + insight.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s.";
-            insight.ReviewText = "Session review: final stable weight " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", time to stabilize " + insight.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s, stability " + insight.StabilityBandText + " (" + insight.StabilityScore.ToString("0", CultureInfo.InvariantCulture) + "/100), stance " + insight.StanceTendencyText + ", pattern check: " + (insight.MatchesUsualPattern ? "matches your usual pattern" : "different from your usual pattern") + ".";
+            insight.ReviewText = "Session review: final stable weight " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", time to stabilize " + insight.TimeToStabilizeSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s, stability " + insight.StabilityBandText + " (" + insight.StabilityScore.ToString("0", CultureInfo.InvariantCulture) + "/100), stance " + insight.StanceTendencyText + ", pattern check: " + GetPatternCheckText(insight) + ".";
             return insight;
         }
 
@@ -1085,9 +1085,9 @@ namespace WiiBalanceScale
                 if (Math.Abs(insight.AverageLeftPercent - previous.AverageLeftPercent) >= 3.0f || Math.Abs(insight.AverageFrontPercent - previous.AverageFrontPercent) >= 3.0f)
                     insight.AdviceMessages.Add("Your balance pattern changed compared with your previous session.");
             }
-            if (recentCount >= 3 && !insight.MatchesUsualPattern)
+            if (recentCount >= 3 && !insight.MatchesUsualPattern && IsRepeatedPatternStrong(insight.RepeatedPatternText))
                 insight.AdviceMessages.Add("This session is different from your usual pattern.");
-            if (!insight.RepeatedPatternText.Contains("not enough"))
+            if (IsRepeatedPatternStrong(insight.RepeatedPatternText))
                 insight.AdviceMessages.Add("Your repeated pattern is " + insight.RepeatedPatternText.Replace("Repeated pattern: ", "").Replace(".", "") + ".");
             if (insight.AdviceMessages.Count == 0)
                 insight.AdviceMessages.Add("Measurement looked steady and balanced overall.");
@@ -1146,15 +1146,28 @@ namespace WiiBalanceScale
 
         static bool MatchesRepeatedPattern(SessionInsight insight, string repeatedPatternText)
         {
-            if (insight == null || repeatedPatternText == null) return true;
+            if (insight == null || repeatedPatternText == null) return false;
             if (repeatedPatternText.Contains("not enough") || repeatedPatternText.Contains("mixed"))
-                return true;
+                return false;
             if (repeatedPatternText.Contains("left") && insight.StanceTendencyText.Contains("left")) return true;
             if (repeatedPatternText.Contains("right") && insight.StanceTendencyText.Contains("right")) return true;
             if (repeatedPatternText.Contains("forward") && insight.StanceTendencyText.Contains("forward")) return true;
             if (repeatedPatternText.Contains("backward") && insight.StanceTendencyText.Contains("backward")) return true;
             if (repeatedPatternText.Contains("centered") && insight.StanceTendencyText.Contains("centered")) return true;
             return false;
+        }
+
+        static bool IsRepeatedPatternStrong(string repeatedPatternText)
+        {
+            if (string.IsNullOrEmpty(repeatedPatternText)) return false;
+            return !repeatedPatternText.Contains("not enough") && !repeatedPatternText.Contains("mixed");
+        }
+
+        static string GetPatternCheckText(SessionInsight insight)
+        {
+            if (insight == null || !IsRepeatedPatternStrong(insight.RepeatedPatternText))
+                return "usual pattern not clear yet";
+            return (insight.MatchesUsualPattern ? "matches your usual pattern" : "different from your usual pattern");
         }
 
         static bool IsRecordComparable(SessionHistoryRecord record)
