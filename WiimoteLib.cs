@@ -2525,7 +2525,7 @@ namespace WiimoteLib
 	/// </summary>
 	public class ConnectionManager
 	{
-		public enum EScanResult { None, Connected, NoDeviceFound, BluetoothApiFailure, PermissionDenied }
+		public enum EScanResult { None, Connected, Cancelled, NoDeviceFound, BluetoothApiFailure, PermissionDenied }
 
 		public class ScanStatus
 		{
@@ -2550,7 +2550,7 @@ namespace WiimoteLib
 			return true;
 		}
 
-		private bool bCancel = false, bDidConnect = false, bHadError = false;
+		private volatile bool bCancel = false, bDidConnect = false, bHadError = false;
 		private Thread Worker = null;
 		private ScanStatus LastScanStatus = new ScanStatus();
 
@@ -2576,10 +2576,20 @@ namespace WiimoteLib
 			return true;
 		}
 
-		public bool IsRunning()  { return Worker != null && Worker.IsAlive; }
+		public bool IsRunning()
+		{
+			Thread worker = Worker;
+			return worker != null && worker.IsAlive;
+		}
 		public bool DidConnect() { return !IsRunning() && bDidConnect;  }
 		public bool HadError()   { return !IsRunning() && bHadError;  }
-		public void Cancel()     { bCancel = IsRunning();  }
+		public void Cancel()
+		{
+			bCancel = true;
+			Thread worker = Worker;
+			if (worker != null && worker.IsAlive)
+				worker.Join(2000);
+		}
 		public ScanStatus GetLastScanStatus() { return LastScanStatus; }
 
 		private void SetScanStatus(EScanResult result, string detail, int errorCode)
@@ -2596,63 +2606,77 @@ namespace WiimoteLib
 
 		private void ThreadConnect()
 		{
-			BLUETOOTH_DEVICE_INFO dev = new BLUETOOTH_DEVICE_INFO();
-			dev.dwSize = Marshal.SizeOf(typeof(BLUETOOTH_DEVICE_INFO));
-
-			BLUETOOTH_DEVICE_SEARCH_PARAMS sp = new BLUETOOTH_DEVICE_SEARCH_PARAMS();
-			sp.dwSize = Marshal.SizeOf(typeof(BLUETOOTH_DEVICE_SEARCH_PARAMS));
-			sp.fIssueInquiry = sp.fReturnAuthenticated = sp.fReturnConnected = sp.fReturnRemembered = sp.fReturnUnknown = true;
-			sp.cTimeoutMultiplier = 1;
-
-			SetScanStatus(EScanResult.None, "", 0);
-			const int ScanTimeoutMilliseconds = 15000;
-			DateTime scanStart = DateTime.UtcNow;
-			while (!bCancel && !bDidConnect && !bHadError && (DateTime.UtcNow - scanStart).TotalMilliseconds < ScanTimeoutMilliseconds)
+			try
 			{
-				IntPtr handle = BluetoothFindFirstDevice(ref sp, ref dev);
-				if (handle == IntPtr.Zero)
+				BLUETOOTH_DEVICE_INFO dev = new BLUETOOTH_DEVICE_INFO();
+				dev.dwSize = Marshal.SizeOf(typeof(BLUETOOTH_DEVICE_INFO));
+
+				BLUETOOTH_DEVICE_SEARCH_PARAMS sp = new BLUETOOTH_DEVICE_SEARCH_PARAMS();
+				sp.dwSize = Marshal.SizeOf(typeof(BLUETOOTH_DEVICE_SEARCH_PARAMS));
+				sp.fIssueInquiry = sp.fReturnAuthenticated = sp.fReturnConnected = sp.fReturnRemembered = sp.fReturnUnknown = true;
+				sp.cTimeoutMultiplier = 1;
+
+				SetScanStatus(EScanResult.None, "", 0);
+				const int ScanTimeoutMilliseconds = 15000;
+				DateTime scanStart = DateTime.UtcNow;
+				while (!bCancel && !bDidConnect && !bHadError && (DateTime.UtcNow - scanStart).TotalMilliseconds < ScanTimeoutMilliseconds)
 				{
-					int lasterror = Marshal.GetLastWin32Error();
-					if (lasterror != ERROR_SUCCESS && lasterror != ERROR_NO_MORE_ITEMS)
+					IntPtr handle = BluetoothFindFirstDevice(ref sp, ref dev);
+					if (handle == IntPtr.Zero)
 					{
-						bHadError = true;
-						SetScanStatus((IsPermissionError(lasterror) ? EScanResult.PermissionDenied : EScanResult.BluetoothApiFailure), "BluetoothFindFirstDevice failed", lasterror);
-					}
-					continue;
-				}
-				while (!bCancel && !bDidConnect && !bHadError)
-				{
-					if (dev.szName.StartsWith("Nintendo RVL"))
-					{
-						if (dev.fRemembered)
+						int lasterror = Marshal.GetLastWin32Error();
+						if (lasterror != ERROR_SUCCESS && lasterror != ERROR_NO_MORE_ITEMS)
 						{
-							BluetoothRemoveDevice(ref dev.Address);
+							bHadError = true;
+							SetScanStatus((IsPermissionError(lasterror) ? EScanResult.PermissionDenied : EScanResult.BluetoothApiFailure), "BluetoothFindFirstDevice failed", lasterror);
 						}
-						else
+						continue;
+					}
+					while (!bCancel && !bDidConnect && !bHadError)
+					{
+						if (dev.szName.StartsWith("Nintendo RVL"))
 						{
-							uint setServiceError = BluetoothSetServiceState(IntPtr.Zero, ref dev, ref HumanInterfaceDeviceServiceClass_UUID, BLUETOOTH_SERVICE_ENABLE);
-							if (setServiceError != ERROR_SUCCESS)
+							if (dev.fRemembered)
 							{
-								bHadError = true;
-								int lasterror = (int)setServiceError;
-								SetScanStatus((IsPermissionError(lasterror) ? EScanResult.PermissionDenied : EScanResult.BluetoothApiFailure), "BluetoothSetServiceState failed for " + dev.szName, lasterror);
+								BluetoothRemoveDevice(ref dev.Address);
 							}
 							else
 							{
-								bDidConnect = true;
-								SetScanStatus(EScanResult.Connected, "Bluetooth service enabled for " + dev.szName, 0);
-								break;
+								uint setServiceError = BluetoothSetServiceState(IntPtr.Zero, ref dev, ref HumanInterfaceDeviceServiceClass_UUID, BLUETOOTH_SERVICE_ENABLE);
+								if (setServiceError != ERROR_SUCCESS)
+								{
+									bHadError = true;
+									int lasterror = (int)setServiceError;
+									SetScanStatus((IsPermissionError(lasterror) ? EScanResult.PermissionDenied : EScanResult.BluetoothApiFailure), "BluetoothSetServiceState failed for " + dev.szName, lasterror);
+								}
+								else
+								{
+									bDidConnect = true;
+									SetScanStatus(EScanResult.Connected, "Bluetooth service enabled for " + dev.szName, 0);
+									break;
+								}
 							}
 						}
-					}
 
-					dev.szName = "";
-					if (!BluetoothFindNextDevice(handle, ref dev)) break;
+						dev.szName = "";
+						if (!BluetoothFindNextDevice(handle, ref dev)) break;
+					}
+					BluetoothFindDeviceClose(handle);
 				}
-				BluetoothFindDeviceClose(handle);
 			}
-			if (!bCancel && !bDidConnect && !bHadError && LastScanStatus.Result == EScanResult.None)
-				SetScanStatus(EScanResult.NoDeviceFound, "Bluetooth scan timed out without finding a matching Nintendo RVL device.", 0);
+			catch (Exception ex)
+			{
+				bHadError = true;
+				SetScanStatus(EScanResult.BluetoothApiFailure, "Unhandled bluetooth scan exception: " + ex.Message, 0);
+			}
+			finally
+			{
+				if (bCancel && !bDidConnect && !bHadError)
+					SetScanStatus(EScanResult.Cancelled, "Bluetooth scan was cancelled.", 0);
+				else if (!bCancel && !bDidConnect && !bHadError && LastScanStatus.Result == EScanResult.None)
+					SetScanStatus(EScanResult.NoDeviceFound, "Bluetooth scan timed out without finding a matching Nintendo RVL device.", 0);
+				Worker = null;
+			}
 		}
 
 		#region pinvoke defs
