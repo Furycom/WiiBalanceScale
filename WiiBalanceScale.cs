@@ -73,6 +73,51 @@ namespace WiiBalanceScale
             public float HeightCm;
         }
 
+        class SessionInsight
+        {
+            public bool HasEnoughSamples;
+            public int SampleCount;
+            public string ProfileName;
+            public float ProfileHeightCm;
+            public DateTime StartedUtc;
+            public DateTime EndedUtc;
+            public float StableWeightKg;
+            public float AverageLeftPercent;
+            public float AverageFrontPercent;
+            public float AverageStabilityLevel;
+            public float AveragePressurePointX;
+            public float AveragePressurePointY;
+            public string WeightVsHeightText;
+            public string LeftRightTendencyText;
+            public string FrontBackTendencyText;
+            public string StabilityQualityText;
+            public string PressurePointTendencyText;
+            public string SimilarityText;
+            public string SummaryText;
+            public string ComparisonText;
+            public string TrendText;
+            public List<string> AdviceMessages = new List<string>();
+        }
+
+        class SessionHistoryRecord
+        {
+            public DateTime TimestampUtc;
+            public string ProfileName;
+            public float ProfileHeightCm;
+            public int SampleCount;
+            public float StableWeightKg;
+            public float AverageLeftPercent;
+            public float AverageFrontPercent;
+            public float AverageStabilityLevel;
+            public float AveragePressurePointX;
+            public float AveragePressurePointY;
+            public string WeightVsHeightText;
+            public string SummaryText;
+            public string ComparisonText;
+            public string TrendText;
+            public string AdviceText;
+        }
+
         static bool CanShowUnicode = GetCanShowUnicode();
         static char CharFilledStar = (CanShowUnicode ? '\u2739' : '\u00AE');
         static char CharHollowCircle = (CanShowUnicode ? '\u3007' : '\u00A1');
@@ -91,6 +136,10 @@ namespace WiiBalanceScale
 
         static readonly List<MeasurementSample> SessionMeasurements = new List<MeasurementSample>();
         static readonly List<ProfileInfo> Profiles = new List<ProfileInfo>();
+        static readonly List<SessionHistoryRecord> SessionHistory = new List<SessionHistoryRecord>();
+        static SessionInsight LastSessionInsight = null;
+        static string LastSessionAdviceText = "Advice: Waiting for measurement...";
+        static string LastActiveProfileName = "Default";
 
         static DateTime LastSessionRecordUtc = DateTime.MinValue;
         static int LastStabilityLevel = 0;
@@ -101,7 +150,9 @@ namespace WiiBalanceScale
 
         static readonly string ProfilesPath = Path.Combine(Application.StartupPath, "profiles.csv");
         static readonly string LegacyProfilesPath = Path.Combine(Application.StartupPath, "profiles.txt");
-        static readonly string CsvHeader = "timestamp_utc,profile,profile_height_cm,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,pressure_point_x,pressure_point_y,stability_level";
+        static readonly string CsvHeader = "timestamp_utc,profile,profile_height_cm,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,pressure_point_x,pressure_point_y,stability_level,session_summary,session_comparison,recent_trend,session_advice,weight_vs_height_text";
+        static readonly string SessionHistoryPath = Path.Combine(Application.StartupPath, "session_history.csv");
+        static readonly string SessionHistoryHeader = "timestamp_utc,profile,profile_height_cm,sample_count,stable_weight_kg,avg_left_percent,avg_front_percent,avg_stability_level,avg_pressure_x,avg_pressure_y,weight_vs_height_text,summary_text,comparison_text,trend_text,advice_text";
 
         static bool GetCanShowUnicode()
         {
@@ -121,6 +172,7 @@ namespace WiiBalanceScale
             if (CanShowUnicode) f.lblQuality.Font = new Font("Segoe UI Symbol", 40F, FontStyle.Regular, GraphicsUnit.Pixel);
 
             LoadProfiles();
+            LoadSessionHistory();
             BindProfilesToUi();
 
             f.btnReset.Click += btnReset_Click;
@@ -136,6 +188,10 @@ namespace WiiBalanceScale
             f.unitSelectorLb.CheckedChanged += unitRadioButton_Change;
             f.unitSelectorStone.CheckedChanged += unitRadioButton_Change;
             f.unitSelectorKg.Checked = true;
+            UpdateWeightVsHeightIndicator();
+            UpdateSessionInfo();
+            ProfileInfo initialProfile = GetSelectedProfile();
+            LastActiveProfileName = (initialProfile == null ? "Default" : initialProfile.Name);
 
             ConnectBalanceBoard(false);
             if (f == null) return;
@@ -151,6 +207,7 @@ namespace WiiBalanceScale
 
         static void Shutdown()
         {
+            SaveCurrentSessionToHistory();
             if (BoardTimer != null) { BoardTimer.Stop(); BoardTimer = null; }
             if (cm != null) { cm.Cancel(); cm = null; }
             CleanupBalanceBoard();
@@ -246,6 +303,127 @@ namespace WiiBalanceScale
             if (p == null) return;
             f.txtProfileName.Text = p.Name;
             f.txtProfileHeightCm.Text = (p.HeightCm > 0.0f ? p.HeightCm.ToString("0.0", CultureInfo.InvariantCulture) : "");
+        }
+
+        static string[] SplitCsvLine(string line)
+        {
+            List<string> values = new List<string>();
+            if (line == null) return values.ToArray();
+
+            StringBuilder current = new StringBuilder();
+            bool inQuotes = false;
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (inQuotes)
+                {
+                    if (c == '"')
+                    {
+                        if (i + 1 < line.Length && line[i + 1] == '"')
+                        {
+                            current.Append('"');
+                            i++;
+                        }
+                        else
+                        {
+                            inQuotes = false;
+                        }
+                    }
+                    else
+                    {
+                        current.Append(c);
+                    }
+                }
+                else
+                {
+                    if (c == ',')
+                    {
+                        values.Add(current.ToString());
+                        current.Length = 0;
+                    }
+                    else if (c == '"')
+                    {
+                        inQuotes = true;
+                    }
+                    else
+                    {
+                        current.Append(c);
+                    }
+                }
+            }
+            values.Add(current.ToString());
+            return values.ToArray();
+        }
+
+        static void LoadSessionHistory()
+        {
+            SessionHistory.Clear();
+            if (!File.Exists(SessionHistoryPath)) return;
+
+            try
+            {
+                string[] lines = File.ReadAllLines(SessionHistoryPath);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = (lines[i] == null ? "" : lines[i].Trim());
+                    if (line.Length == 0 || line == SessionHistoryHeader) continue;
+
+                    string[] parts = SplitCsvLine(line);
+                    if (parts.Length < 15) continue;
+
+                    DateTime timestampUtc;
+                    if (!DateTime.TryParse(parts[0], null, DateTimeStyles.RoundtripKind, out timestampUtc)) continue;
+
+                    SessionHistoryRecord record = new SessionHistoryRecord();
+                    record.TimestampUtc = timestampUtc;
+                    record.ProfileName = parts[1];
+                    float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out record.ProfileHeightCm);
+                    int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out record.SampleCount);
+                    float.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out record.StableWeightKg);
+                    float.TryParse(parts[5], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AverageLeftPercent);
+                    float.TryParse(parts[6], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AverageFrontPercent);
+                    float.TryParse(parts[7], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AverageStabilityLevel);
+                    float.TryParse(parts[8], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AveragePressurePointX);
+                    float.TryParse(parts[9], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AveragePressurePointY);
+                    record.WeightVsHeightText = parts[10];
+                    record.SummaryText = parts[11];
+                    record.ComparisonText = parts[12];
+                    record.TrendText = parts[13];
+                    record.AdviceText = parts[14];
+                    SessionHistory.Add(record);
+                }
+            }
+            catch
+            {
+                SessionHistory.Clear();
+            }
+        }
+
+        static void SaveSessionHistory()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine(SessionHistoryHeader);
+            for (int i = 0; i < SessionHistory.Count; i++)
+            {
+                SessionHistoryRecord r = SessionHistory[i];
+                sb.Append(r.TimestampUtc.ToString("o", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(CsvEscape(r.ProfileName)); sb.Append(',');
+                sb.Append(r.ProfileHeightCm.ToString("0.0", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.SampleCount.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.StableWeightKg.ToString("0.000", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.AverageLeftPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.AverageFrontPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.AverageStabilityLevel.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.AveragePressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(r.AveragePressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(CsvEscape(r.WeightVsHeightText)); sb.Append(',');
+                sb.Append(CsvEscape(r.SummaryText)); sb.Append(',');
+                sb.Append(CsvEscape(r.ComparisonText)); sb.Append(',');
+                sb.Append(CsvEscape(r.TrendText)); sb.Append(',');
+                sb.Append(CsvEscape(r.AdviceText));
+                sb.AppendLine();
+            }
+            File.WriteAllText(SessionHistoryPath, sb.ToString(), Encoding.UTF8);
         }
 
         static void SetConnectionError(EConnectionError error, string detail)
@@ -514,46 +692,198 @@ namespace WiiBalanceScale
         static void UpdateWeightVsHeightIndicator()
         {
             ProfileInfo profile = GetSelectedProfile();
+            f.lblWeightVsHeight.Text = BuildWeightVsHeightText(profile, LastDisplayedWeightKg);
+        }
+
+        static string BuildWeightVsHeightText(ProfileInfo profile, float weightKg)
+        {
             if (profile == null || profile.HeightCm <= 0.0f)
-            {
-                f.lblWeightVsHeight.Text = "Weight vs height: add profile height to view this indicator.";
-                return;
-            }
+                return "Weight vs height: add profile height to view this indicator.";
 
             float heightM = profile.HeightCm / 100.0f;
             if (heightM <= 0.1f)
-            {
-                f.lblWeightVsHeight.Text = "Weight vs height: height is too low to calculate.";
-                return;
-            }
+                return "Weight vs height: height is too low to calculate.";
 
-            float indicator = LastDisplayedWeightKg / (heightM * heightM);
+            float indicator = weightKg / (heightM * heightM);
             string band;
             if (indicator < 18.5f) band = "below the typical range";
             else if (indicator < 25.0f) band = "in the typical range";
             else if (indicator < 30.0f) band = "above the typical range";
             else band = "well above the typical range";
 
-            f.lblWeightVsHeight.Text = "Weight vs height: " + band + " (simple indicator, not a diagnosis).";
+            return "Weight vs height: " + band + " (simple indicator, not a diagnosis).";
+        }
+
+        static SessionInsight BuildSessionInsight(ProfileInfo profile)
+        {
+            SessionInsight insight = new SessionInsight();
+            insight.ProfileName = (profile == null ? "Default" : profile.Name);
+            insight.ProfileHeightCm = (profile == null ? 0.0f : profile.HeightCm);
+
+            List<MeasurementSample> samples = new List<MeasurementSample>();
+            for (int i = 0; i < SessionMeasurements.Count; i++)
+                if (string.Equals(SessionMeasurements[i].ProfileName, insight.ProfileName, StringComparison.OrdinalIgnoreCase))
+                    samples.Add(SessionMeasurements[i]);
+
+            insight.SampleCount = samples.Count;
+            insight.HasEnoughSamples = samples.Count >= 8;
+            if (samples.Count == 0)
+            {
+                insight.SummaryText = "Session summary: waiting for enough samples...";
+                insight.ComparisonText = "Compared with your previous session: not available yet.";
+                insight.TrendText = "Recent trend: not enough history yet.";
+                return insight;
+            }
+
+            insight.StartedUtc = samples[0].TimestampUtc;
+            insight.EndedUtc = samples[samples.Count - 1].TimestampUtc;
+
+            float sumWeight = 0.0f, sumLeft = 0.0f, sumFront = 0.0f, sumStability = 0.0f, sumX = 0.0f, sumY = 0.0f;
+            int stableCount = 0;
+            float stableWeightSum = 0.0f;
+            int leftHeavyCount = 0, rightHeavyCount = 0, frontHeavyCount = 0, backHeavyCount = 0;
+
+            for (int i = 0; i < samples.Count; i++)
+            {
+                MeasurementSample s = samples[i];
+                sumWeight += s.TotalWeightKg;
+                sumLeft += s.LeftPercent;
+                sumFront += s.FrontPercent;
+                sumStability += s.StabilityLevel;
+                sumX += s.PressurePointX;
+                sumY += s.PressurePointY;
+                if (s.StabilityLevel >= 3)
+                {
+                    stableCount++;
+                    stableWeightSum += s.TotalWeightKg;
+                }
+                if (s.LeftPercent > 52.0f) leftHeavyCount++;
+                else if (s.LeftPercent < 48.0f) rightHeavyCount++;
+                if (s.FrontPercent > 52.0f) frontHeavyCount++;
+                else if (s.FrontPercent < 48.0f) backHeavyCount++;
+            }
+
+            insight.StableWeightKg = (stableCount >= 4 ? stableWeightSum / stableCount : sumWeight / samples.Count);
+            insight.AverageLeftPercent = sumLeft / samples.Count;
+            insight.AverageFrontPercent = sumFront / samples.Count;
+            insight.AverageStabilityLevel = sumStability / samples.Count;
+            insight.AveragePressurePointX = sumX / samples.Count;
+            insight.AveragePressurePointY = sumY / samples.Count;
+            insight.WeightVsHeightText = BuildWeightVsHeightText(profile, insight.StableWeightKg);
+
+            if (leftHeavyCount > rightHeavyCount + 3) insight.LeftRightTendencyText = "slightly more weight on the left";
+            else if (rightHeavyCount > leftHeavyCount + 3) insight.LeftRightTendencyText = "slightly more weight on the right";
+            else insight.LeftRightTendencyText = "left and right mostly even";
+
+            if (frontHeavyCount > backHeavyCount + 3) insight.FrontBackTendencyText = "slightly more weight forward";
+            else if (backHeavyCount > frontHeavyCount + 3) insight.FrontBackTendencyText = "slightly more weight backward";
+            else insight.FrontBackTendencyText = "front and back mostly even";
+
+            if (insight.AverageStabilityLevel >= 4.2f) insight.StabilityQualityText = "very stable";
+            else if (insight.AverageStabilityLevel >= 3.2f) insight.StabilityQualityText = "mostly stable";
+            else if (insight.AverageStabilityLevel >= 2.4f) insight.StabilityQualityText = "some movement";
+            else insight.StabilityQualityText = "movement reduced accuracy";
+
+            if (Math.Abs(insight.AveragePressurePointX) < 0.08f && Math.Abs(insight.AveragePressurePointY) < 0.08f) insight.PressurePointTendencyText = "pressure point stayed near center";
+            else if (Math.Abs(insight.AveragePressurePointX) > Math.Abs(insight.AveragePressurePointY)) insight.PressurePointTendencyText = (insight.AveragePressurePointX > 0 ? "pressure point tended to the right" : "pressure point tended to the left");
+            else insight.PressurePointTendencyText = (insight.AveragePressurePointY > 0 ? "pressure point tended forward" : "pressure point tended backward");
+
+            BuildComparisonAndAdvice(insight);
+            insight.SummaryText = "Session summary: " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.StabilityQualityText + ", " + insight.LeftRightTendencyText + ", " + insight.FrontBackTendencyText + ".";
+            return insight;
+        }
+
+        static void BuildComparisonAndAdvice(SessionInsight insight)
+        {
+            List<SessionHistoryRecord> profileHistory = new List<SessionHistoryRecord>();
+            for (int i = SessionHistory.Count - 1; i >= 0; i--)
+                if (string.Equals(SessionHistory[i].ProfileName, insight.ProfileName, StringComparison.OrdinalIgnoreCase))
+                    profileHistory.Add(SessionHistory[i]);
+
+            SessionHistoryRecord previous = (profileHistory.Count > 0 ? profileHistory[0] : null);
+            int recentCount = Math.Min(5, profileHistory.Count);
+            float avgWeight = 0.0f, avgLeft = 50.0f, avgFront = 50.0f, avgStability = 3.0f;
+            if (recentCount > 0)
+            {
+                avgLeft = 0.0f; avgFront = 0.0f; avgStability = 0.0f;
+                for (int i = 0; i < recentCount; i++)
+                {
+                    avgWeight += profileHistory[i].StableWeightKg;
+                    avgLeft += profileHistory[i].AverageLeftPercent;
+                    avgFront += profileHistory[i].AverageFrontPercent;
+                    avgStability += profileHistory[i].AverageStabilityLevel;
+                }
+                avgWeight /= recentCount;
+                avgLeft /= recentCount;
+                avgFront /= recentCount;
+                avgStability /= recentCount;
+            }
+
+            if (previous == null)
+            {
+                insight.SimilarityText = "first recorded session for this profile";
+                insight.ComparisonText = "Compared with your previous session: not available yet.";
+                insight.TrendText = "Recent trend: not enough history yet.";
+            }
+            else
+            {
+                float weightDeltaPrev = insight.StableWeightKg - previous.StableWeightKg;
+                float leftDeltaPrev = insight.AverageLeftPercent - previous.AverageLeftPercent;
+                float frontDeltaPrev = insight.AverageFrontPercent - previous.AverageFrontPercent;
+                float stabilityDeltaPrev = insight.AverageStabilityLevel - previous.AverageStabilityLevel;
+                bool similar = Math.Abs(weightDeltaPrev) < 1.0f && Math.Abs(leftDeltaPrev) < 2.5f && Math.Abs(frontDeltaPrev) < 2.5f && Math.Abs(stabilityDeltaPrev) < 0.5f;
+                insight.SimilarityText = (similar ? "looks similar to your previous session" : "looks different from your previous session");
+                insight.ComparisonText = "Compared with previous: weight " + FormatDelta(weightDeltaPrev, "kg") + ", left/right " + FormatDelta(leftDeltaPrev, "pts") + ", front/back " + FormatDelta(frontDeltaPrev, "pts") + ", stability " + FormatDelta(stabilityDeltaPrev, "lvl") + ".";
+                if (recentCount > 0)
+                {
+                    float weightDeltaAvg = insight.StableWeightKg - avgWeight;
+                    float leftDeltaAvg = insight.AverageLeftPercent - avgLeft;
+                    float frontDeltaAvg = insight.AverageFrontPercent - avgFront;
+                    float stabilityDeltaAvg = insight.AverageStabilityLevel - avgStability;
+                    insight.TrendText = "Recent trend: weight " + FormatDelta(weightDeltaAvg, "kg") + ", left/right " + FormatDelta(leftDeltaAvg, "pts") + ", front/back " + FormatDelta(frontDeltaAvg, "pts") + ", stability " + FormatDelta(stabilityDeltaAvg, "lvl") + ".";
+                }
+            }
+
+            insight.AdviceMessages.Clear();
+            if (insight.AverageStabilityLevel < 3.0f) insight.AdviceMessages.Add("Stand still for a few more seconds for a cleaner reading.");
+            if (insight.AverageLeftPercent < 48.5f) insight.AdviceMessages.Add("You were slightly right-leaning today.");
+            else if (insight.AverageLeftPercent > 51.5f) insight.AdviceMessages.Add("You were slightly left-leaning today.");
+            if (insight.AverageFrontPercent < 48.5f) insight.AdviceMessages.Add("You were slightly back-leaning today.");
+            else if (insight.AverageFrontPercent > 51.5f) insight.AdviceMessages.Add("You were slightly forward-leaning today.");
+            if (Math.Abs(insight.AverageLeftPercent - 50.0f) >= 3.5f || Math.Abs(insight.AverageFrontPercent - 50.0f) >= 3.5f)
+                insight.AdviceMessages.Add("The same imbalance repeated across this session.");
+            if (previous != null)
+            {
+                if (Math.Abs(insight.StableWeightKg - previous.StableWeightKg) >= 1.5f)
+                    insight.AdviceMessages.Add("Your weight changed compared with your previous session.");
+                if (Math.Abs(insight.AverageLeftPercent - previous.AverageLeftPercent) >= 3.0f || Math.Abs(insight.AverageFrontPercent - previous.AverageFrontPercent) >= 3.0f)
+                    insight.AdviceMessages.Add("Your balance pattern changed compared with your previous session.");
+            }
+            if (recentCount >= 3)
+            {
+                if (Math.Abs(insight.AverageLeftPercent - avgLeft) >= 4.0f || Math.Abs(insight.AverageFrontPercent - avgFront) >= 4.0f)
+                    insight.AdviceMessages.Add("This session was unusual compared with your recent history.");
+            }
+            if (insight.AdviceMessages.Count == 0)
+                insight.AdviceMessages.Add("Measurement looked steady and balanced overall.");
+        }
+
+        static string FormatDelta(float value, string unit)
+        {
+            string direction = (Math.Abs(value) < 0.0001f ? "no change" : (value > 0.0f ? "up " : "down "));
+            if (direction == "no change") return "no change";
+            return direction + Math.Abs(value).ToString("0.0", CultureInfo.InvariantCulture) + " " + unit;
         }
 
         static void UpdateAdviceMessage()
         {
-            string advice;
-            if (LastStabilityLevel <= 2)
-                advice = "Advice: Stand still a little longer.";
-            else if (LastLeftPercent < 45.0f)
-                advice = "Advice: Your weight is slightly shifted to the right.";
-            else if (LastLeftPercent > 55.0f)
-                advice = "Advice: Your weight is slightly shifted to the left.";
-            else if (LastFrontPercent < 45.0f)
-                advice = "Advice: Your weight is slightly backward.";
-            else if (LastFrontPercent > 55.0f)
-                advice = "Advice: Your weight is slightly forward.";
+            ProfileInfo profile = GetSelectedProfile();
+            LastSessionInsight = BuildSessionInsight(profile);
+            if (LastSessionInsight.AdviceMessages.Count > 0)
+                LastSessionAdviceText = "Advice: " + LastSessionInsight.AdviceMessages[0];
             else
-                advice = "Advice: Measurement is stable.";
-
-            f.lblAdvice.Text = advice;
+                LastSessionAdviceText = "Advice: Measurement looked steady and balanced overall.";
+            f.lblAdvice.Text = LastSessionAdviceText;
         }
 
         static void MaybeRecordSession()
@@ -612,6 +942,61 @@ namespace WiiBalanceScale
                 profileDesc += " (" + profile.HeightCm.ToString("0.0", CultureInfo.InvariantCulture) + " cm)";
 
             f.lblSessionInfo.Text = "Session samples: " + SessionMeasurements.Count.ToString() + "   Profile: " + profileDesc;
+            if (LastSessionInsight == null || !string.Equals(LastSessionInsight.ProfileName, (profile == null ? "Default" : profile.Name), StringComparison.OrdinalIgnoreCase))
+                LastSessionInsight = BuildSessionInsight(profile);
+
+            f.lblSessionSummary.Text = LastSessionInsight.SummaryText;
+            f.lblSessionComparison.Text = LastSessionInsight.ComparisonText;
+            f.lblTrendHighlights.Text = LastSessionInsight.TrendText;
+        }
+
+        static void SaveCurrentSessionToHistory(string profileName = null)
+        {
+            ProfileInfo profile = (string.IsNullOrEmpty(profileName) ? GetSelectedProfile() : FindProfileByName(profileName));
+            if (profile == null) profile = new ProfileInfo() { Name = (string.IsNullOrEmpty(profileName) ? "Default" : profileName), HeightCm = 0.0f };
+            SessionInsight insight = BuildSessionInsight(profile);
+            if (!insight.HasEnoughSamples) return;
+
+            bool hasSimilarRecent = false;
+            for (int i = SessionHistory.Count - 1; i >= 0; i--)
+            {
+                SessionHistoryRecord existing = SessionHistory[i];
+                if (!string.Equals(existing.ProfileName, insight.ProfileName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if ((DateTime.UtcNow - existing.TimestampUtc).TotalSeconds > 30.0)
+                    break;
+                if (Math.Abs(existing.StableWeightKg - insight.StableWeightKg) < 0.1f &&
+                    Math.Abs(existing.AverageLeftPercent - insight.AverageLeftPercent) < 0.1f &&
+                    Math.Abs(existing.AverageFrontPercent - insight.AverageFrontPercent) < 0.1f)
+                {
+                    hasSimilarRecent = true;
+                    break;
+                }
+            }
+            if (hasSimilarRecent) return;
+
+            SessionHistoryRecord record = new SessionHistoryRecord();
+            record.TimestampUtc = DateTime.UtcNow;
+            record.ProfileName = insight.ProfileName;
+            record.ProfileHeightCm = insight.ProfileHeightCm;
+            record.SampleCount = insight.SampleCount;
+            record.StableWeightKg = insight.StableWeightKg;
+            record.AverageLeftPercent = insight.AverageLeftPercent;
+            record.AverageFrontPercent = insight.AverageFrontPercent;
+            record.AverageStabilityLevel = insight.AverageStabilityLevel;
+            record.AveragePressurePointX = insight.AveragePressurePointX;
+            record.AveragePressurePointY = insight.AveragePressurePointY;
+            record.WeightVsHeightText = insight.WeightVsHeightText;
+            record.SummaryText = insight.SummaryText;
+            record.ComparisonText = insight.ComparisonText;
+            record.TrendText = insight.TrendText;
+            record.AdviceText = string.Join(" | ", insight.AdviceMessages.ToArray());
+            SessionHistory.Add(record);
+
+            if (SessionHistory.Count > 500)
+                SessionHistory.RemoveRange(0, SessionHistory.Count - 500);
+
+            try { SaveSessionHistory(); } catch { }
         }
 
         static void btnReset_Click(object sender, EventArgs e)
@@ -634,9 +1019,13 @@ namespace WiiBalanceScale
 
         static void cmbProfiles_SelectedIndexChanged(object sender, EventArgs e)
         {
+            string previousProfileName = LastActiveProfileName;
+            SaveCurrentSessionToHistory(previousProfileName);
             ApplyProfileToInputs();
             UpdateWeightVsHeightIndicator();
             UpdateSessionInfo();
+            ProfileInfo selected = GetSelectedProfile();
+            LastActiveProfileName = (selected == null ? "Default" : selected.Name);
         }
 
         static void btnAddProfile_Click(object sender, EventArgs e)
@@ -685,8 +1074,10 @@ namespace WiiBalanceScale
 
         static void btnClearSession_Click(object sender, EventArgs e)
         {
+            SaveCurrentSessionToHistory();
             SessionMeasurements.Clear();
             LastSessionRecordUtc = DateTime.MinValue;
+            LastSessionInsight = null;
             UpdateSessionInfo();
         }
 
@@ -756,6 +1147,8 @@ namespace WiiBalanceScale
 
         static void ExportCsv(string path)
         {
+            SessionInsight insight = BuildSessionInsight(GetSelectedProfile());
+            string adviceText = string.Join(" | ", insight.AdviceMessages.ToArray());
             StringBuilder sb = new StringBuilder();
             sb.AppendLine(CsvHeader);
             for (int i = 0; i < SessionMeasurements.Count; i++)
@@ -775,7 +1168,12 @@ namespace WiiBalanceScale
                 sb.Append(s.BackPercent.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.PressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.PressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
-                sb.Append(s.StabilityLevel.ToString(CultureInfo.InvariantCulture));
+                sb.Append(s.StabilityLevel.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(CsvEscape(insight.SummaryText)); sb.Append(',');
+                sb.Append(CsvEscape(insight.ComparisonText)); sb.Append(',');
+                sb.Append(CsvEscape(insight.TrendText)); sb.Append(',');
+                sb.Append(CsvEscape(adviceText)); sb.Append(',');
+                sb.Append(CsvEscape(insight.WeightVsHeightText));
                 sb.AppendLine();
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
@@ -791,10 +1189,24 @@ namespace WiiBalanceScale
         {
             StringBuilder sb = new StringBuilder();
             ProfileInfo profile = GetSelectedProfile();
+            SessionInsight insight = BuildSessionInsight(profile);
             sb.AppendLine("{");
             sb.Append("  \"profile\": \"").Append(JsonEscape(profile == null ? "Default" : profile.Name)).AppendLine("\",");
             sb.Append("  \"profile_height_cm\": ").Append(profile == null ? "0.0" : profile.HeightCm.ToString("0.0", CultureInfo.InvariantCulture)).AppendLine(",");
             sb.Append("  \"exported_at_utc\": \"").Append(DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)).AppendLine("\",");
+            sb.AppendLine("  \"session_summary\": {");
+            sb.Append("    \"summary_text\": \"").Append(JsonEscape(insight.SummaryText)).AppendLine("\",");
+            sb.Append("    \"comparison_text\": \"").Append(JsonEscape(insight.ComparisonText)).AppendLine("\",");
+            sb.Append("    \"trend_text\": \"").Append(JsonEscape(insight.TrendText)).AppendLine("\",");
+            sb.Append("    \"weight_vs_height_text\": \"").Append(JsonEscape(insight.WeightVsHeightText)).AppendLine("\",");
+            sb.Append("    \"advice\": [");
+            for (int i = 0; i < insight.AdviceMessages.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append("\"").Append(JsonEscape(insight.AdviceMessages[i])).Append("\"");
+            }
+            sb.AppendLine("]");
+            sb.AppendLine("  },");
             sb.AppendLine("  \"samples\": [");
             for (int i = 0; i < SessionMeasurements.Count; i++)
             {

@@ -45,6 +45,9 @@ namespace WiiBalanceScale
         internal Label lblAdvice;
         internal Label lblWeightVsHeight;
         internal Label lblSessionInfo;
+        internal Label lblSessionSummary;
+        internal Label lblSessionComparison;
+        internal Label lblTrendHighlights;
         internal Button btnReset;
         internal GroupBox unitSelector;
         internal RadioButton unitSelectorKg;
@@ -85,6 +88,9 @@ namespace WiiBalanceScale
             this.lblAdvice = new Label();
             this.lblWeightVsHeight = new Label();
             this.lblSessionInfo = new Label();
+            this.lblSessionSummary = new Label();
+            this.lblSessionComparison = new Label();
+            this.lblTrendHighlights = new Label();
             this.btnReset = new Button();
             this.unitSelector = new GroupBox();
             this.unitSelectorKg = new RadioButton();
@@ -124,7 +130,7 @@ namespace WiiBalanceScale
             this.Text = "Wii Balance Scale";
 
             grpWeight.Location = new Point(10, 8);
-            grpWeight.Size = new Size(690, 258);
+            grpWeight.Size = new Size(690, 312);
             grpWeight.Text = "Live weight";
 
             this.lblWeight.Font = new Font("Lucida Console", 68F);
@@ -165,6 +171,18 @@ namespace WiiBalanceScale
             this.lblSessionInfo.Size = new Size(670, 30);
             this.lblSessionInfo.Text = "Session samples: 0";
 
+            this.lblSessionSummary.Location = new Point(12, 246);
+            this.lblSessionSummary.Size = new Size(670, 18);
+            this.lblSessionSummary.Text = "Session summary: waiting for enough samples...";
+
+            this.lblSessionComparison.Location = new Point(12, 266);
+            this.lblSessionComparison.Size = new Size(670, 18);
+            this.lblSessionComparison.Text = "Compared with your previous session: not available yet.";
+
+            this.lblTrendHighlights.Location = new Point(12, 286);
+            this.lblTrendHighlights.Size = new Size(670, 18);
+            this.lblTrendHighlights.Text = "Recent trend: not enough history yet.";
+
             grpWeight.Controls.Add(this.lblWeight);
             grpWeight.Controls.Add(this.lblUnit);
             grpWeight.Controls.Add(lblStabilityCaption);
@@ -173,8 +191,11 @@ namespace WiiBalanceScale
             grpWeight.Controls.Add(this.lblAdvice);
             grpWeight.Controls.Add(this.lblWeightVsHeight);
             grpWeight.Controls.Add(this.lblSessionInfo);
+            grpWeight.Controls.Add(this.lblSessionSummary);
+            grpWeight.Controls.Add(this.lblSessionComparison);
+            grpWeight.Controls.Add(this.lblTrendHighlights);
 
-            this.unitSelector.Location = new Point(10, 272);
+            this.unitSelector.Location = new Point(10, 324);
             this.unitSelector.Size = new Size(690, 45);
             this.unitSelector.Text = "Units";
             this.unitSelector.Visible = false;
@@ -251,7 +272,7 @@ namespace WiiBalanceScale
             this.btnReset.Text = "Zero";
             this.btnReset.UseVisualStyleBackColor = true;
 
-            grpSensors.Location = new Point(10, 326);
+            grpSensors.Location = new Point(10, 374);
             grpSensors.Size = new Size(350, 220);
             grpSensors.Text = "Corner load (kg)";
 
@@ -276,7 +297,7 @@ namespace WiiBalanceScale
             grpSensors.Controls.Add(this.lblBottomLeft);
             grpSensors.Controls.Add(this.lblBottomRight);
 
-            grpBalance.Location = new Point(370, 326);
+            grpBalance.Location = new Point(370, 374);
             grpBalance.Size = new Size(330, 220);
             grpBalance.Text = "Balance";
 
