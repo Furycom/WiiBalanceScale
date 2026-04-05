@@ -47,6 +47,7 @@ namespace WiiBalanceScale
     {
         enum EConnectionError { None, NoBluetoothAdapter, PermissionDenied, NoDeviceFound, WrongDeviceType, ConnectionFailed }
         enum EUnit { Kg, Lb, Stone }
+        enum ESessionQuality { GoodSession, UsableSession, WeakSession, UnstableSession }
 
         class MeasurementSample
         {
@@ -91,11 +92,16 @@ namespace WiiBalanceScale
             public string LeftRightTendencyText;
             public string FrontBackTendencyText;
             public string StabilityQualityText;
+            public ESessionQuality SessionQuality;
+            public string SessionQualityText;
+            public string SessionQualityReasonText;
+            public bool IsStrongEnoughForComparison;
             public string PressurePointTendencyText;
             public string SimilarityText;
             public string SummaryText;
             public string ComparisonText;
             public string TrendText;
+            public string ReviewText;
             public List<string> AdviceMessages = new List<string>();
         }
 
@@ -111,8 +117,10 @@ namespace WiiBalanceScale
             public float AverageStabilityLevel;
             public float AveragePressurePointX;
             public float AveragePressurePointY;
+            public string SessionQualityText;
             public string WeightVsHeightText;
             public string SummaryText;
+            public string ReviewText;
             public string ComparisonText;
             public string TrendText;
             public string AdviceText;
@@ -150,9 +158,9 @@ namespace WiiBalanceScale
 
         static readonly string ProfilesPath = Path.Combine(Application.StartupPath, "profiles.csv");
         static readonly string LegacyProfilesPath = Path.Combine(Application.StartupPath, "profiles.txt");
-        static readonly string CsvHeader = "timestamp_utc,profile,profile_height_cm,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,pressure_point_x,pressure_point_y,stability_level,session_summary,session_comparison,recent_trend,session_advice,weight_vs_height_text";
+        static readonly string CsvHeader = "timestamp_utc,profile,profile_height_cm,total_weight_kg,sensor_top_left_kg,sensor_top_right_kg,sensor_bottom_left_kg,sensor_bottom_right_kg,left_percent,right_percent,front_percent,back_percent,pressure_point_x,pressure_point_y,stability_level,session_quality,session_review_summary,session_summary,session_comparison,recent_trend_interpretation,current_advice,weight_vs_height_text";
         static readonly string SessionHistoryPath = Path.Combine(Application.StartupPath, "session_history.csv");
-        static readonly string SessionHistoryHeader = "timestamp_utc,profile,profile_height_cm,sample_count,stable_weight_kg,avg_left_percent,avg_front_percent,avg_stability_level,avg_pressure_x,avg_pressure_y,weight_vs_height_text,summary_text,comparison_text,trend_text,advice_text";
+        static readonly string SessionHistoryHeader = "timestamp_utc,profile,profile_height_cm,sample_count,stable_weight_kg,avg_left_percent,avg_front_percent,avg_stability_level,avg_pressure_x,avg_pressure_y,session_quality,weight_vs_height_text,summary_text,review_text,comparison_text,trend_text,advice_text";
 
         static bool GetCanShowUnicode()
         {
@@ -182,6 +190,10 @@ namespace WiiBalanceScale
             f.btnExportCsv.Click += btnExportCsv_Click;
             f.btnExportJson.Click += btnExportJson_Click;
             f.pnlCenterOfPressure.Paint += pnlCenterOfPressure_Paint;
+            f.pnlWeightTrend.Paint += pnlWeightTrend_Paint;
+            f.pnlLeftRightTrend.Paint += pnlLeftRightTrend_Paint;
+            f.pnlFrontBackTrend.Paint += pnlFrontBackTrend_Paint;
+            f.pnlStabilityTrend.Paint += pnlStabilityTrend_Paint;
 
             EventHandler unitRadioButton_Change = unitRadioButton_ChangeHandler;
             f.unitSelectorKg.CheckedChanged += unitRadioButton_Change;
@@ -385,11 +397,26 @@ namespace WiiBalanceScale
                     float.TryParse(parts[7], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AverageStabilityLevel);
                     float.TryParse(parts[8], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AveragePressurePointX);
                     float.TryParse(parts[9], NumberStyles.Float, CultureInfo.InvariantCulture, out record.AveragePressurePointY);
-                    record.WeightVsHeightText = parts[10];
-                    record.SummaryText = parts[11];
-                    record.ComparisonText = parts[12];
-                    record.TrendText = parts[13];
-                    record.AdviceText = parts[14];
+                    if (parts.Length >= 17)
+                    {
+                        record.SessionQualityText = parts[10];
+                        record.WeightVsHeightText = parts[11];
+                        record.SummaryText = parts[12];
+                        record.ReviewText = parts[13];
+                        record.ComparisonText = parts[14];
+                        record.TrendText = parts[15];
+                        record.AdviceText = parts[16];
+                    }
+                    else
+                    {
+                        record.SessionQualityText = "usable session";
+                        record.WeightVsHeightText = parts[10];
+                        record.SummaryText = parts[11];
+                        record.ReviewText = parts[11];
+                        record.ComparisonText = parts[12];
+                        record.TrendText = parts[13];
+                        record.AdviceText = parts[14];
+                    }
                     SessionHistory.Add(record);
                 }
             }
@@ -416,8 +443,10 @@ namespace WiiBalanceScale
                 sb.Append(r.AverageStabilityLevel.ToString("0.00", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AveragePressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(r.AveragePressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(CsvEscape(r.SessionQualityText)); sb.Append(',');
                 sb.Append(CsvEscape(r.WeightVsHeightText)); sb.Append(',');
                 sb.Append(CsvEscape(r.SummaryText)); sb.Append(',');
+                sb.Append(CsvEscape(r.ReviewText)); sb.Append(',');
                 sb.Append(CsvEscape(r.ComparisonText)); sb.Append(',');
                 sb.Append(CsvEscape(r.TrendText)); sb.Append(',');
                 sb.Append(CsvEscape(r.AdviceText));
@@ -732,6 +761,7 @@ namespace WiiBalanceScale
                 insight.SummaryText = "Session summary: waiting for enough samples...";
                 insight.ComparisonText = "Compared with your previous session: not available yet.";
                 insight.TrendText = "Recent trend: not enough history yet.";
+                insight.ReviewText = "Session review: waiting for enough samples...";
                 return insight;
             }
 
@@ -742,6 +772,11 @@ namespace WiiBalanceScale
             int stableCount = 0;
             float stableWeightSum = 0.0f;
             int leftHeavyCount = 0, rightHeavyCount = 0, frontHeavyCount = 0, backHeavyCount = 0;
+            int driftCount = 0;
+            float minWeight = float.MaxValue;
+            float maxWeight = float.MinValue;
+            float previousLeft = samples[0].LeftPercent;
+            float previousFront = samples[0].FrontPercent;
 
             for (int i = 0; i < samples.Count; i++)
             {
@@ -752,6 +787,8 @@ namespace WiiBalanceScale
                 sumStability += s.StabilityLevel;
                 sumX += s.PressurePointX;
                 sumY += s.PressurePointY;
+                if (s.TotalWeightKg < minWeight) minWeight = s.TotalWeightKg;
+                if (s.TotalWeightKg > maxWeight) maxWeight = s.TotalWeightKg;
                 if (s.StabilityLevel >= 3)
                 {
                     stableCount++;
@@ -761,6 +798,13 @@ namespace WiiBalanceScale
                 else if (s.LeftPercent < 48.0f) rightHeavyCount++;
                 if (s.FrontPercent > 52.0f) frontHeavyCount++;
                 else if (s.FrontPercent < 48.0f) backHeavyCount++;
+                if (i > 0)
+                {
+                    if (Math.Abs(s.LeftPercent - previousLeft) >= 4.0f || Math.Abs(s.FrontPercent - previousFront) >= 4.0f)
+                        driftCount++;
+                    previousLeft = s.LeftPercent;
+                    previousFront = s.FrontPercent;
+                }
             }
 
             insight.StableWeightKg = (stableCount >= 4 ? stableWeightSum / stableCount : sumWeight / samples.Count);
@@ -788,9 +832,42 @@ namespace WiiBalanceScale
             else if (Math.Abs(insight.AveragePressurePointX) > Math.Abs(insight.AveragePressurePointY)) insight.PressurePointTendencyText = (insight.AveragePressurePointX > 0 ? "pressure point tended to the right" : "pressure point tended to the left");
             else insight.PressurePointTendencyText = (insight.AveragePressurePointY > 0 ? "pressure point tended forward" : "pressure point tended backward");
 
+            float weightRange = Math.Max(0.0f, maxWeight - minWeight);
+            insight.SessionQuality = ClassifySessionQuality(samples.Count, insight.AverageStabilityLevel, weightRange, driftCount);
+            insight.SessionQualityText = GetSessionQualityText(insight.SessionQuality);
+            insight.SessionQualityReasonText = BuildSessionQualityReason(samples.Count, insight.AverageStabilityLevel, weightRange, driftCount);
+            insight.IsStrongEnoughForComparison = (insight.SessionQuality == ESessionQuality.GoodSession || insight.SessionQuality == ESessionQuality.UsableSession);
+
             BuildComparisonAndAdvice(insight);
-            insight.SummaryText = "Session summary: " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.StabilityQualityText + ", " + insight.LeftRightTendencyText + ", " + insight.FrontBackTendencyText + ".";
+            insight.SummaryText = "Session summary: " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", " + insight.StabilityQualityText + ".";
+            insight.ReviewText = "Session review: final stable weight " + insight.StableWeightKg.ToString("0.0", CultureInfo.InvariantCulture) + " kg, " + insight.SessionQualityText + ", left/right " + insight.LeftRightTendencyText + ", front/back " + insight.FrontBackTendencyText + ", " + insight.PressurePointTendencyText + ".";
             return insight;
+        }
+
+        static ESessionQuality ClassifySessionQuality(int sampleCount, float avgStabilityLevel, float weightRangeKg, int driftCount)
+        {
+            if (sampleCount < 6 || avgStabilityLevel < 2.0f) return ESessionQuality.UnstableSession;
+            if (sampleCount < 10 || avgStabilityLevel < 2.8f || weightRangeKg > 1.8f || driftCount >= 8) return ESessionQuality.WeakSession;
+            if (sampleCount < 16 || avgStabilityLevel < 3.5f || weightRangeKg > 1.0f || driftCount >= 5) return ESessionQuality.UsableSession;
+            return ESessionQuality.GoodSession;
+        }
+
+        static string GetSessionQualityText(ESessionQuality quality)
+        {
+            if (quality == ESessionQuality.GoodSession) return "good session";
+            if (quality == ESessionQuality.UsableSession) return "usable session";
+            if (quality == ESessionQuality.WeakSession) return "weak session";
+            return "unstable session";
+        }
+
+        static string BuildSessionQualityReason(int sampleCount, float avgStabilityLevel, float weightRangeKg, int driftCount)
+        {
+            if (sampleCount < 6) return "very short capture with too few samples";
+            if (avgStabilityLevel < 2.0f) return "high movement made the reading unstable";
+            if (weightRangeKg > 1.8f) return "weight changed too much during this reading";
+            if (driftCount >= 8) return "balance drift repeated often";
+            if (sampleCount < 16 || avgStabilityLevel < 3.5f) return "usable but not as steady as your stronger sessions";
+            return "steady sample count, stable stance, and consistent readings";
         }
 
         static void BuildComparisonAndAdvice(SessionInsight insight)
@@ -800,18 +877,32 @@ namespace WiiBalanceScale
                 if (string.Equals(SessionHistory[i].ProfileName, insight.ProfileName, StringComparison.OrdinalIgnoreCase))
                     profileHistory.Add(SessionHistory[i]);
 
-            SessionHistoryRecord previous = (profileHistory.Count > 0 ? profileHistory[0] : null);
-            int recentCount = Math.Min(5, profileHistory.Count);
+            SessionHistoryRecord previous = null;
+            for (int i = 0; i < profileHistory.Count; i++)
+            {
+                if (IsRecordComparable(profileHistory[i]))
+                {
+                    previous = profileHistory[i];
+                    break;
+                }
+            }
+
+            List<SessionHistoryRecord> recentComparable = new List<SessionHistoryRecord>();
+            for (int i = 0; i < profileHistory.Count && recentComparable.Count < 5; i++)
+                if (IsRecordComparable(profileHistory[i]))
+                    recentComparable.Add(profileHistory[i]);
+            int recentCount = recentComparable.Count;
+
             float avgWeight = 0.0f, avgLeft = 50.0f, avgFront = 50.0f, avgStability = 3.0f;
             if (recentCount > 0)
             {
                 avgLeft = 0.0f; avgFront = 0.0f; avgStability = 0.0f;
                 for (int i = 0; i < recentCount; i++)
                 {
-                    avgWeight += profileHistory[i].StableWeightKg;
-                    avgLeft += profileHistory[i].AverageLeftPercent;
-                    avgFront += profileHistory[i].AverageFrontPercent;
-                    avgStability += profileHistory[i].AverageStabilityLevel;
+                    avgWeight += recentComparable[i].StableWeightKg;
+                    avgLeft += recentComparable[i].AverageLeftPercent;
+                    avgFront += recentComparable[i].AverageFrontPercent;
+                    avgStability += recentComparable[i].AverageStabilityLevel;
                 }
                 avgWeight /= recentCount;
                 avgLeft /= recentCount;
@@ -819,7 +910,13 @@ namespace WiiBalanceScale
                 avgStability /= recentCount;
             }
 
-            if (previous == null)
+            if (!insight.IsStrongEnoughForComparison)
+            {
+                insight.SimilarityText = "session quality is too weak for reliable comparison";
+                insight.ComparisonText = "Compared with previous: this session is marked " + insight.SessionQualityText + " and is not used for detailed comparison.";
+                insight.TrendText = BuildTrendInterpretation(insight, recentComparable, avgWeight, avgLeft, avgFront, avgStability);
+            }
+            else if (previous == null)
             {
                 insight.SimilarityText = "first recorded session for this profile";
                 insight.ComparisonText = "Compared with your previous session: not available yet.";
@@ -834,14 +931,7 @@ namespace WiiBalanceScale
                 bool similar = Math.Abs(weightDeltaPrev) < 1.0f && Math.Abs(leftDeltaPrev) < 2.5f && Math.Abs(frontDeltaPrev) < 2.5f && Math.Abs(stabilityDeltaPrev) < 0.5f;
                 insight.SimilarityText = (similar ? "looks similar to your previous session" : "looks different from your previous session");
                 insight.ComparisonText = "Compared with previous: weight " + FormatDelta(weightDeltaPrev, "kg") + ", left/right " + FormatDelta(leftDeltaPrev, "pts") + ", front/back " + FormatDelta(frontDeltaPrev, "pts") + ", stability " + FormatDelta(stabilityDeltaPrev, "lvl") + ".";
-                if (recentCount > 0)
-                {
-                    float weightDeltaAvg = insight.StableWeightKg - avgWeight;
-                    float leftDeltaAvg = insight.AverageLeftPercent - avgLeft;
-                    float frontDeltaAvg = insight.AverageFrontPercent - avgFront;
-                    float stabilityDeltaAvg = insight.AverageStabilityLevel - avgStability;
-                    insight.TrendText = "Recent trend: weight " + FormatDelta(weightDeltaAvg, "kg") + ", left/right " + FormatDelta(leftDeltaAvg, "pts") + ", front/back " + FormatDelta(frontDeltaAvg, "pts") + ", stability " + FormatDelta(stabilityDeltaAvg, "lvl") + ".";
-                }
+                insight.TrendText = BuildTrendInterpretation(insight, recentComparable, avgWeight, avgLeft, avgFront, avgStability);
             }
 
             insight.AdviceMessages.Clear();
@@ -866,6 +956,45 @@ namespace WiiBalanceScale
             }
             if (insight.AdviceMessages.Count == 0)
                 insight.AdviceMessages.Add("Measurement looked steady and balanced overall.");
+            if (!insight.IsStrongEnoughForComparison)
+                insight.AdviceMessages.Add("Try one longer and steadier reading so your next comparison is stronger.");
+        }
+
+        static bool IsRecordComparable(SessionHistoryRecord record)
+        {
+            if (record == null) return false;
+            return string.Equals(record.SessionQualityText, "good session", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(record.SessionQualityText, "usable session", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static string BuildTrendInterpretation(SessionInsight insight, List<SessionHistoryRecord> recentComparable, float avgWeight, float avgLeft, float avgFront, float avgStability)
+        {
+            if (recentComparable.Count == 0)
+                return "Recent trend: not enough history yet.";
+
+            List<string> highlights = new List<string>();
+            float weightDelta = insight.StableWeightKg - avgWeight;
+            if (Math.Abs(weightDelta) < 0.6f) highlights.Add("weight has been stable recently");
+            else if (weightDelta > 0.0f) highlights.Add("weight has slowly increased");
+            else highlights.Add("weight has slowly decreased");
+
+            float balanceSpread = 0.0f;
+            for (int i = 0; i < recentComparable.Count; i++)
+            {
+                float dist = Math.Abs(recentComparable[i].AverageLeftPercent - 50.0f);
+                if (dist > balanceSpread) balanceSpread = dist;
+            }
+            if (Math.Abs(insight.AverageLeftPercent - 50.0f) < 1.7f && Math.Abs(insight.AverageFrontPercent - 50.0f) < 1.7f)
+                highlights.Add("balance is usually centered");
+            else if (balanceSpread >= 3.5f)
+                highlights.Add("left/right balance varies from session to session");
+
+            if (insight.AverageStabilityLevel < avgStability - 0.5f)
+                highlights.Add("this session was less stable than usual");
+            else if (insight.AverageStabilityLevel > avgStability + 0.5f)
+                highlights.Add("this session was steadier than usual");
+
+            return "Recent trend: " + string.Join("; ", highlights.ToArray()) + ".";
         }
 
         static string FormatDelta(float value, string unit)
@@ -948,6 +1077,11 @@ namespace WiiBalanceScale
             f.lblSessionSummary.Text = LastSessionInsight.SummaryText;
             f.lblSessionComparison.Text = LastSessionInsight.ComparisonText;
             f.lblTrendHighlights.Text = LastSessionInsight.TrendText;
+            f.lblSessionReview.Text = LastSessionInsight.ReviewText + " Quality reason: " + LastSessionInsight.SessionQualityReasonText + ".";
+            f.pnlWeightTrend.Invalidate();
+            f.pnlLeftRightTrend.Invalidate();
+            f.pnlFrontBackTrend.Invalidate();
+            f.pnlStabilityTrend.Invalidate();
         }
 
         static void SaveCurrentSessionToHistory(string profileName = null)
@@ -956,6 +1090,7 @@ namespace WiiBalanceScale
             if (profile == null) profile = new ProfileInfo() { Name = (string.IsNullOrEmpty(profileName) ? "Default" : profileName), HeightCm = 0.0f };
             SessionInsight insight = BuildSessionInsight(profile);
             if (!insight.HasEnoughSamples) return;
+            if (insight.SessionQuality == ESessionQuality.UnstableSession) return;
 
             bool hasSimilarRecent = false;
             for (int i = SessionHistory.Count - 1; i >= 0; i--)
@@ -986,8 +1121,10 @@ namespace WiiBalanceScale
             record.AverageStabilityLevel = insight.AverageStabilityLevel;
             record.AveragePressurePointX = insight.AveragePressurePointX;
             record.AveragePressurePointY = insight.AveragePressurePointY;
+            record.SessionQualityText = insight.SessionQualityText;
             record.WeightVsHeightText = insight.WeightVsHeightText;
             record.SummaryText = insight.SummaryText;
+            record.ReviewText = insight.ReviewText;
             record.ComparisonText = insight.ComparisonText;
             record.TrendText = insight.TrendText;
             record.AdviceText = string.Join(" | ", insight.AdviceMessages.ToArray());
@@ -1169,6 +1306,8 @@ namespace WiiBalanceScale
                 sb.Append(s.PressurePointX.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.PressurePointY.ToString("0.0000", CultureInfo.InvariantCulture)); sb.Append(',');
                 sb.Append(s.StabilityLevel.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
+                sb.Append(CsvEscape(insight.SessionQualityText)); sb.Append(',');
+                sb.Append(CsvEscape(insight.ReviewText)); sb.Append(',');
                 sb.Append(CsvEscape(insight.SummaryText)); sb.Append(',');
                 sb.Append(CsvEscape(insight.ComparisonText)); sb.Append(',');
                 sb.Append(CsvEscape(insight.TrendText)); sb.Append(',');
@@ -1195,9 +1334,12 @@ namespace WiiBalanceScale
             sb.Append("  \"profile_height_cm\": ").Append(profile == null ? "0.0" : profile.HeightCm.ToString("0.0", CultureInfo.InvariantCulture)).AppendLine(",");
             sb.Append("  \"exported_at_utc\": \"").Append(DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)).AppendLine("\",");
             sb.AppendLine("  \"session_summary\": {");
+            sb.Append("    \"session_quality\": \"").Append(JsonEscape(insight.SessionQualityText)).AppendLine("\",");
+            sb.Append("    \"session_quality_reason\": \"").Append(JsonEscape(insight.SessionQualityReasonText)).AppendLine("\",");
+            sb.Append("    \"review_text\": \"").Append(JsonEscape(insight.ReviewText)).AppendLine("\",");
             sb.Append("    \"summary_text\": \"").Append(JsonEscape(insight.SummaryText)).AppendLine("\",");
             sb.Append("    \"comparison_text\": \"").Append(JsonEscape(insight.ComparisonText)).AppendLine("\",");
-            sb.Append("    \"trend_text\": \"").Append(JsonEscape(insight.TrendText)).AppendLine("\",");
+            sb.Append("    \"recent_trend_interpretation\": \"").Append(JsonEscape(insight.TrendText)).AppendLine("\",");
             sb.Append("    \"weight_vs_height_text\": \"").Append(JsonEscape(insight.WeightVsHeightText)).AppendLine("\",");
             sb.Append("    \"advice\": [");
             for (int i = 0; i < insight.AdviceMessages.Count; i++)
@@ -1234,6 +1376,104 @@ namespace WiiBalanceScale
             sb.AppendLine("  ]");
             sb.AppendLine("}");
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+        }
+
+        static List<SessionHistoryRecord> GetRecentProfileHistory(string profileName, int maxCount, bool comparableOnly)
+        {
+            List<SessionHistoryRecord> list = new List<SessionHistoryRecord>();
+            for (int i = SessionHistory.Count - 1; i >= 0 && list.Count < maxCount; i--)
+            {
+                SessionHistoryRecord record = SessionHistory[i];
+                if (!string.Equals(record.ProfileName, profileName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (comparableOnly && !IsRecordComparable(record))
+                    continue;
+                list.Add(record);
+            }
+            list.Reverse();
+            return list;
+        }
+
+        static void DrawTrendGraph(Graphics g, Rectangle rc, List<float> values, float centerLineValue, float minValue, float maxValue, Color lineColor)
+        {
+            g.Clear(Color.White);
+            if (rc.Width < 4 || rc.Height < 4) return;
+
+            using (Pen borderPen = new Pen(Color.LightGray, 1.0f))
+            using (Pen centerPen = new Pen(Color.Gainsboro, 1.0f))
+            using (Pen trendPen = new Pen(lineColor, 2.0f))
+            using (Brush pointBrush = new SolidBrush(lineColor))
+            {
+                g.DrawRectangle(borderPen, 0, 0, rc.Width - 1, rc.Height - 1);
+                if (maxValue <= minValue) maxValue = minValue + 1.0f;
+                float centerY = rc.Height - 1 - ((centerLineValue - minValue) / (maxValue - minValue)) * (rc.Height - 2);
+                g.DrawLine(centerPen, 1, centerY, rc.Width - 2, centerY);
+
+                if (values.Count < 2) return;
+
+                PointF[] pts = new PointF[values.Count];
+                for (int i = 0; i < values.Count; i++)
+                {
+                    float t = (values.Count == 1 ? 0.0f : (float)i / (values.Count - 1));
+                    float x = 1 + t * (rc.Width - 3);
+                    float y = rc.Height - 1 - ((values[i] - minValue) / (maxValue - minValue)) * (rc.Height - 2);
+                    pts[i] = new PointF(x, y);
+                }
+                g.DrawLines(trendPen, pts);
+                for (int i = 0; i < pts.Length; i++)
+                    g.FillEllipse(pointBrush, pts[i].X - 2.0f, pts[i].Y - 2.0f, 4.0f, 4.0f);
+            }
+        }
+
+        static void pnlWeightTrend_Paint(object sender, PaintEventArgs e)
+        {
+            ProfileInfo profile = GetSelectedProfile();
+            string name = (profile == null ? "Default" : profile.Name);
+            List<SessionHistoryRecord> history = GetRecentProfileHistory(name, 12, true);
+            List<float> values = new List<float>();
+            float min = float.MaxValue, max = float.MinValue;
+            for (int i = 0; i < history.Count; i++)
+            {
+                float v = history[i].StableWeightKg;
+                values.Add(v);
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            if (values.Count == 0) { values.Add(0.0f); min = -1.0f; max = 1.0f; }
+            DrawTrendGraph(e.Graphics, f.pnlWeightTrend.ClientRectangle, values, values[values.Count - 1], min - 0.4f, max + 0.4f, Color.SteelBlue);
+        }
+
+        static void pnlLeftRightTrend_Paint(object sender, PaintEventArgs e)
+        {
+            ProfileInfo profile = GetSelectedProfile();
+            string name = (profile == null ? "Default" : profile.Name);
+            List<SessionHistoryRecord> history = GetRecentProfileHistory(name, 12, true);
+            List<float> values = new List<float>();
+            for (int i = 0; i < history.Count; i++) values.Add(history[i].AverageLeftPercent);
+            if (values.Count == 0) values.Add(50.0f);
+            DrawTrendGraph(e.Graphics, f.pnlLeftRightTrend.ClientRectangle, values, 50.0f, 44.0f, 56.0f, Color.DarkOrange);
+        }
+
+        static void pnlFrontBackTrend_Paint(object sender, PaintEventArgs e)
+        {
+            ProfileInfo profile = GetSelectedProfile();
+            string name = (profile == null ? "Default" : profile.Name);
+            List<SessionHistoryRecord> history = GetRecentProfileHistory(name, 12, true);
+            List<float> values = new List<float>();
+            for (int i = 0; i < history.Count; i++) values.Add(history[i].AverageFrontPercent);
+            if (values.Count == 0) values.Add(50.0f);
+            DrawTrendGraph(e.Graphics, f.pnlFrontBackTrend.ClientRectangle, values, 50.0f, 44.0f, 56.0f, Color.MediumSeaGreen);
+        }
+
+        static void pnlStabilityTrend_Paint(object sender, PaintEventArgs e)
+        {
+            ProfileInfo profile = GetSelectedProfile();
+            string name = (profile == null ? "Default" : profile.Name);
+            List<SessionHistoryRecord> history = GetRecentProfileHistory(name, 12, true);
+            List<float> values = new List<float>();
+            for (int i = 0; i < history.Count; i++) values.Add(history[i].AverageStabilityLevel);
+            if (values.Count == 0) values.Add(3.0f);
+            DrawTrendGraph(e.Graphics, f.pnlStabilityTrend.ClientRectangle, values, 3.5f, 1.0f, 5.0f, Color.MediumPurple);
         }
 
         static void pnlCenterOfPressure_Paint(object sender, PaintEventArgs e)
