@@ -2525,6 +2525,15 @@ namespace WiimoteLib
 	/// </summary>
 	public class ConnectionManager
 	{
+		public enum EScanResult { None, Connected, NoDeviceFound, BluetoothApiFailure, PermissionDenied }
+
+		public class ScanStatus
+		{
+			public EScanResult Result = EScanResult.None;
+			public string Detail = "";
+			public int ErrorCode = 0;
+		}
+
 		public static bool ElevateProcessNeedRestart()
 		{
 			bool IsAdmin = (new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
@@ -2543,6 +2552,7 @@ namespace WiimoteLib
 
 		private bool bCancel = false, bDidConnect = false, bHadError = false;
 		private Thread Worker = null;
+		private ScanStatus LastScanStatus = new ScanStatus();
 
 		public bool ConnectNextWiiMote()
 		{
@@ -2570,6 +2580,19 @@ namespace WiimoteLib
 		public bool DidConnect() { return !IsRunning() && bDidConnect;  }
 		public bool HadError()   { return !IsRunning() && bHadError;  }
 		public void Cancel()     { bCancel = IsRunning();  }
+		public ScanStatus GetLastScanStatus() { return LastScanStatus; }
+
+		private void SetScanStatus(EScanResult result, string detail, int errorCode)
+		{
+			LastScanStatus.Result = result;
+			LastScanStatus.Detail = detail;
+			LastScanStatus.ErrorCode = errorCode;
+		}
+
+		private static bool IsPermissionError(int errorCode)
+		{
+			return errorCode == 5 || errorCode == 740;
+		}
 
 		private void ThreadConnect()
 		{
@@ -2581,6 +2604,7 @@ namespace WiimoteLib
 			sp.fIssueInquiry = sp.fReturnAuthenticated = sp.fReturnConnected = sp.fReturnRemembered = sp.fReturnUnknown = true;
 			sp.cTimeoutMultiplier = 1;
 
+			SetScanStatus(EScanResult.None, "", 0);
 			const int ScanTimeoutMilliseconds = 15000;
 			DateTime scanStart = DateTime.UtcNow;
 			while (!bCancel && !bDidConnect && !bHadError && (DateTime.UtcNow - scanStart).TotalMilliseconds < ScanTimeoutMilliseconds)
@@ -2589,7 +2613,11 @@ namespace WiimoteLib
 				if (handle == IntPtr.Zero)
 				{
 					int lasterror = Marshal.GetLastWin32Error();
-					if (lasterror != ERROR_SUCCESS && lasterror != ERROR_NO_MORE_ITEMS) bHadError = true;
+					if (lasterror != ERROR_SUCCESS && lasterror != ERROR_NO_MORE_ITEMS)
+					{
+						bHadError = true;
+						SetScanStatus((IsPermissionError(lasterror) ? EScanResult.PermissionDenied : EScanResult.BluetoothApiFailure), "BluetoothFindFirstDevice failed", lasterror);
+					}
 					continue;
 				}
 				while (!bCancel && !bDidConnect && !bHadError)
@@ -2600,15 +2628,21 @@ namespace WiimoteLib
 						{
 							BluetoothRemoveDevice(ref dev.Address);
 						}
-						else if (BluetoothSetServiceState(IntPtr.Zero, ref dev, ref HumanInterfaceDeviceServiceClass_UUID, BLUETOOTH_SERVICE_ENABLE) != 0)
-						{
-							int lasterror = Marshal.GetLastWin32Error();
-							if (lasterror != ERROR_SUCCESS) bHadError = true;
-						}
 						else
 						{
-							bDidConnect = true;
-							break;
+							uint setServiceError = BluetoothSetServiceState(IntPtr.Zero, ref dev, ref HumanInterfaceDeviceServiceClass_UUID, BLUETOOTH_SERVICE_ENABLE);
+							if (setServiceError != ERROR_SUCCESS)
+							{
+								bHadError = true;
+								int lasterror = (int)setServiceError;
+								SetScanStatus((IsPermissionError(lasterror) ? EScanResult.PermissionDenied : EScanResult.BluetoothApiFailure), "BluetoothSetServiceState failed for " + dev.szName, lasterror);
+							}
+							else
+							{
+								bDidConnect = true;
+								SetScanStatus(EScanResult.Connected, "Bluetooth service enabled for " + dev.szName, 0);
+								break;
+							}
 						}
 					}
 
@@ -2617,6 +2651,8 @@ namespace WiimoteLib
 				}
 				BluetoothFindDeviceClose(handle);
 			}
+			if (!bCancel && !bDidConnect && !bHadError && LastScanStatus.Result == EScanResult.None)
+				SetScanStatus(EScanResult.NoDeviceFound, "Bluetooth scan timed out without finding a matching Nintendo RVL device.", 0);
 		}
 
 		#region pinvoke defs
